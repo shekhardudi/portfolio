@@ -1,0 +1,92 @@
+rrf:
+  k: 60
+  knn_k: 50
+  ef_search: 128
+  fetch_multiplier: 4
+
+semantic:
+  # Search mode for the semantic strategy.
+  #   "knn" — pure k-NN vector search only (faster, no BM25 leg)
+  #   "rrf" — hybrid Reciprocal Rank Fusion merging BM25 + k-NN (better precision)
+  mode: "knn"
+
+field_boosts:
+  defaults:                 # SemanticSearchStrategy._DEFAULT_FIELD_BOOSTS
+    name: 2.0
+    domain: 1.0
+    searchable_text: 1.0
+    industry: 1.0
+    locality: 1.0
+  bm25_regular:             # RegularSearchStrategy _build_bm25_query field weights
+    name: 2.0
+    domain: 2.0
+    searchable_text: 1.0
+    industry: 1.0
+    locality: 1.0
+    name_phrase_boost: 10.0
+    # Popularity boost: multiplies BM25 score by (1 + factor * log(1 + employee_count)).
+    # Set to 0 to disable. Typical range: 0.1 – 0.5
+    popularity_boost_factor: 2.0
+
+cache:
+  embedding_maxsize: 512
+  classifier_maxsize: 256
+
+embedding:
+  # Sentence-transformers model name or local path.
+  # Override with EMBEDDING_MODEL env var or by editing here.
+  model: all-MiniLM-L6-v2
+  # Vector dimension produced by the model.
+  dimension: 384
+  # Asymmetric retrieval prefix added to queries (not documents).
+  # Set to empty string "" for symmetric models (e.g. all-MiniLM).
+  query_prefix: "Represent this sentence for searching relevant passages: "
+
+agentic:
+  # LLM model used by the flex ReAct agent (complex / named-company queries).
+  # Any OpenAI chat model that supports tool/function calling.
+  # gpt-4o-mini is sufficient for ReAct reasoning decisions and is 5-10x cheaper.
+  model: "gpt-4o-mini"
+  # Maximum agent iterations before giving up (reduced — 3 covers the full flow)
+  agent_max_iterations: 3
+  # LLM model used for event extraction (both fast pipeline and flex agent).
+  # gpt-4o-mini handles the constrained json_object format well and is fast.
+  extraction_model: "gpt-4o-mini"
+  # Maximum company names the LLM may return per extraction call
+  max_company_names: 25
+  # Maximum company results to return from the extraction prompt
+  max_company_results: 20
+  # Token budget for the LLM event-extraction call
+  llm_max_tokens: 2048
+  # OpenSearch candidates to fetch per resolved company name
+  resolve_per_name: 5
+  # Minimum OpenSearch score to accept a resolved company (avoids false matches)
+  min_resolve_score: 0.5
+  # Whether to resolve extracted company names against the OpenSearch index.
+  # When true (default), each company name is matched via multi_match to enrich
+  # results with index metadata (domain, industry, country, etc.).
+  # When false, results are returned as synthetic docs with event data only —
+  # useful to reduce latency or when the index is empty / not yet populated.
+  resolve_to_index: false
+  # Tavily web-search max results (only used when TAVILY_API_KEY is set)
+  tavily_max_results: 6
+  # Tavily search depth: "basic" (fast, shallow) or "advanced" (deeper, slower)
+  tavily_search_depth: "basic"
+  # Tavily HTTP request timeout in seconds
+  tavily_timeout_s: 8
+  # Redis TTL (seconds) for cached Tavily results in the fast pipeline.
+  # News events don't change second-by-second — 5 minutes is safe for most queries.
+  tavily_cache_ttl_s: 300
+  # Character limit per Tavily result fed to the extraction LLM.
+  # Reducing from 1200 → 800 cuts extraction tokens and latency with minimal recall loss.
+  content_chars: 800
+  # Hard wall-clock timeout (seconds) for the entire flex agent run.
+  # If the agent exceeds this, results collected so far are returned.
+  agent_hard_timeout_s: 90
+  # LLM temperature for the agent's reasoning model (0.0–1.0).
+  # Lower values reduce hallucination in structured extraction tasks.
+  llm_temperature: 0.1
+  # When true, send the user's original natural-language query to Tavily
+  # as the primary search (agent's constructed query becomes the retry).
+  # When false, use the agent's keyword query first (original query is retry).
+  tavily_prefer_original_query: true

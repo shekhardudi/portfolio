@@ -1,0 +1,15 @@
+index_name: companies
+
+chunk_size: 10000
+embedding_batch_size: 512
+bulk_chunk_size: 500
+parallel_embed_insert: true
+
+embedding:
+  model: all-MiniLM-L6-v2
+  dimension: 384
+
+vector_index:
+  space_type: innerproduct
+  m: 16
+  ef_construction: 128

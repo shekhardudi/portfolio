@@ -1,0 +1,8 @@
+docling<2.80
+psycopg2-binary
+pgvector
+anthropic
+sentence-transformers
+python-dotenv
+numpy<2
+transformers<5

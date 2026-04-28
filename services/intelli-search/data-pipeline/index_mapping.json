@@ -1,0 +1,134 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2,
+      "number_of_replicas": 0,
+      "knn": true,
+      "refresh_interval": "60s"
+    },
+    "analysis": {
+      "normalizer": {
+        "lowercase_normalizer": {
+          "type": "custom",
+          "filter": ["lowercase"]
+        }
+      },
+      "analyzer": {
+        "edge_ngram_analyzer": {
+          "type": "custom",
+          "tokenizer": "edge_ngram_tokenizer",
+          "filter": ["lowercase"]
+        }
+      },
+      "tokenizer": {
+        "edge_ngram_tokenizer": {
+          "type": "edge_ngram",
+          "min_gram": 1,
+          "max_gram": 20,
+          "token_chars": ["letter", "digit"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "_source": {
+      "excludes": ["vector_embedding"]
+    },
+    "properties": {
+      "company_id": {
+        "type": "keyword"
+      },
+      "name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "normalizer": "lowercase_normalizer"
+          },
+          "edge_ngram": {
+            "type": "text",
+            "analyzer": "edge_ngram_analyzer"
+          }
+        }
+      },
+      "domain": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "year_founded": {
+        "type": "integer"
+      },
+      "industry": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "country": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "locality": {
+        "type": "text"
+      },
+      "indexed_at": {
+        "type": "date"
+      },
+      "current_employee_estimate": {
+        "type": "long"
+      },
+      "total_employee_estimate": {
+        "type": "long"
+      },
+      "linkedin_url": {
+        "type": "keyword",
+        "index": false
+      },
+      "size_range": {
+        "type": "keyword"
+      },
+      "city": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "state": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "industry_tags": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "country_tags": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "searchable_text": {
+        "type": "text",
+        "analyzer": "standard"
+      },
+      "vector_embedding": {
+        "type": "knn_vector",
+        "dimension": 384,
+        "method": {
+          "name": "hnsw",
+          "space_type": "innerproduct",
+          "engine": "faiss",
+          "parameters": {
+            "m": 16,
+            "ef_construction": 128,
+            "encoder": {
+              "name": "sq",
+              "parameters": {
+                "type": "fp16"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

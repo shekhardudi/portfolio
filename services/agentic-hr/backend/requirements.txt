@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+langgraph
+langchain-core
+psycopg2-binary
+pgvector
+anthropic
+openai
+sentence-transformers
+requests
+pydantic
+pydantic-settings
+python-dotenv
+numpy<2
+transformers<5
+

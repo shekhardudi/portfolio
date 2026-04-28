@@ -1,0 +1,11 @@
+.venv/
+.env
+.git/
+.gitignore
+.pytest_cache/
+.vscode/
+.DS_Store
+__pycache__/
+*.pyc
+tests/
+opensearch_queries.txt

@@ -1,0 +1,22 @@
+# AWS Amplify build spec — used because Amplify treats this repo as a
+# monorepo (AMPLIFY_MONOREPO_APP_ROOT=apps/web in env vars).
+version: 1
+applications:
+  - appRoot: apps/web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm install -g pnpm@9
+            - pnpm install --frozen-lockfile
+        build:
+          commands:
+            - pnpm build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - .next/cache/**/*

@@ -1,0 +1,661 @@
+================================================================================
+ OPENSEARCH QUERIES — INTELLI-SEARCH INTELLIGENT SEARCH
+================================================================================
+All queries issued to the `companies-new` index across every search path.
+Generated from source: app/services/search_service.py,
+                        app/services/search_strategies.py,
+                        app/services/agent_service.py,
+                        app/services/opensearch_service.py
+
+Index fields referenced:
+  name              — company name (text + .keyword)
+  domain            — website domain (text + .keyword)
+  industry          — industry label (text + .keyword)
+  locality          — free-text location string, e.g. "San Jose, California, USA"
+  country           — lowercase country name (text + .keyword)
+  year_founded      — integer
+  size_range        — string bucket, e.g. "51-200" (.keyword)
+  searchable_text   — combined blob of all text fields
+  vector_embedding  — dense vector (cosine similarity, used by k-NN)
+  country_tags      — (referenced in filter code but not populated in index)
+  industry_tags     — (referenced in filter code but not populated in index)
+
+================================================================================
+ QUERY 1 — Basic Structured Search  (search_service.py · _build_filter_query)
+================================================================================
+ENDPOINT : POST /api/search   (or whichever route calls SearchService.basic_search)
+STRATEGY : Direct BM25 — no LLM, no semantics.
+CONTEXT  : Called for the basic/structured search path.  Text query is optional;
+           filters are applied as hard bool-filter clauses.
+           Results include Elasticsearch-style facet aggregations (see Query 1b).
+
+--- 1a  Full text + all filters active ---
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "bool": {
+      "must": {
+        "multi_match": {
+          "query": "<user text query>",
+          "fields": [
+            "name^3",
+            "domain^2",
+            "industry",
+            "locality"
+          ],
+          "type": "best_fields",
+          "operator": "or"
+        }
+      },
+      "filter": [
+        {
+          "terms": {
+            "industry.keyword": ["SaaS", "Fintech"]
+          }
+        },
+        {
+          "term": {
+            "country.keyword": "Australia"
+          }
+        },
+        {
+          "match": {
+            "locality": {
+              "query": "Sydney",
+              "operator": "and"
+            }
+          }
+        },
+        {
+          "range": {
+            "year_founded": {
+              "gte": 2010,
+              "lte": 2020
+            }
+          }
+        },
+        {
+          "terms": {
+            "size_range.keyword": ["51-200", "201-500", "501-1000", "1001-5000", "5001-10000"]
+          }
+        }
+      ]
+    }
+  }
+}
+
+Note: size_range values are expanded from user-friendly categories:
+  "small"      → ["1-10", "11-50", "51-200"]
+  "medium"     → ["201-500", "501-1000", "1001-5000", "5001-10000"]
+  "large" /
+  "enterprise" → ["10001+"]
+
+--- 1b  No text query (filters only) ---
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "country.keyword": "United States"
+          }
+        }
+      ]
+    }
+  }
+}
+
+--- 1c  No filters, no text query (match_all fallback) ---
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "match_all": {}
+  }
+}
+
+
+================================================================================
+ QUERY 1b — Facet Aggregations  (search_service.py · _build_aggregations)
+================================================================================
+ENDPOINT : Same request as Query 1 — aggregations are added to the same body.
+STRATEGY : Appended to every basic_search request via search_with_aggs().
+CONTEXT  : Returns bucket counts for the filter sidebar UI (industries,
+           countries, size ranges, year-founded ranges).
+
+Aggregations block (merged into Query 1 body):
+
+"aggs": {
+  "industries": {
+    "terms": {
+      "field": "industry.keyword",
+      "size": 20
+    }
+  },
+  "countries": {
+    "terms": {
+      "field": "country.keyword",
+      "size": 50
+    }
+  },
+  "sizes": {
+    "terms": {
+      "field": "size_range.keyword",
+      "size": 10
+    }
+  },
+  "years": {
+    "range": {
+      "field": "year_founded",
+      "ranges": [
+        { "to": 1990 },
+        { "from": 1990, "to": 2000 },
+        { "from": 2000, "to": 2010 },
+        { "from": 2010, "to": 2020 },
+        { "from": 2020 }
+      ]
+    }
+  }
+}
+
+
+================================================================================
+ QUERY 2 — Regular / Lexical BM25 Search  (search_strategies.py · RegularSearchStrategy)
+================================================================================
+ENDPOINT : POST /api/search/intelligent
+STRATEGY : RegularSearchStrategy — triggered when the LLM intent classifier
+           routes the query to REGULAR bucket (exact names, acronyms, structured).
+CONTEXT  : Fast path.  No embeddings generated.  Field weights come from
+           search_config.yaml → field_boosts.bm25_regular.
+           A high-boost match_phrase should clause floats exact name matches
+           to the top of the result list.
+
+--- 2a  Text query with no filters ---
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "multi_match": {
+            "query": "Atlassian",
+            "fields": [
+              "name^2",
+              "domain^2",
+              "searchable_text",
+              "industry",
+              "locality"
+            ],
+            "type": "best_fields",
+            "operator": "or"
+          }
+        }
+      ],
+      "should": [
+        {
+          "match_phrase": {
+            "name": {
+              "query": "Atlassian",
+              "boost": 10.0
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+--- 2b  Text query + location_country + industry + year_from filters ---
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "multi_match": {
+            "query": "software companies",
+            "fields": [
+              "name^2",
+              "domain^2",
+              "searchable_text",
+              "industry",
+              "locality"
+            ],
+            "type": "best_fields",
+            "operator": "or"
+          }
+        }
+      ],
+      "should": [
+        {
+          "match_phrase": {
+            "name": {
+              "query": "software companies",
+              "boost": 10.0
+            }
+          }
+        }
+      ],
+      "filter": [
+        {
+          "bool": {
+            "should": [
+              { "term": { "country": "australia" } },
+              { "term": { "country_tags": "australia" } }
+            ],
+            "minimum_should_match": 1
+          }
+        },
+        {
+          "bool": {
+            "should": [
+              {
+                "bool": {
+                  "should": [
+                    { "match": { "industry": { "query": "SaaS", "fuzziness": "AUTO" } } },
+                    { "term": { "industry_tags": "saas" } },
+                    { "match": { "searchable_text": "SaaS" } }
+                  ],
+                  "minimum_should_match": 1
+                }
+              }
+            ],
+            "minimum_should_match": 1
+          }
+        },
+        {
+          "range": {
+            "year_founded": {
+              "gte": 2015
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+--- 2c  location_state filter (match_phrase on locality) ---
+
+Filter clause produced by location_state = "California":
+
+{
+  "bool": {
+    "should": [
+      { "match_phrase": { "locality": "California" } },
+      { "match":        { "country": "california" } }
+    ],
+    "minimum_should_match": 1
+  }
+}
+
+Note: The second should handles city-states like Singapore where the state
+name IS the country name.
+
+--- 2d  location_city filter ---
+
+Filter clause produced by location_city = "San Francisco":
+
+{ "match_phrase": { "locality": "San Francisco" } }
+
+--- 2e  Multiple industries filter ---
+
+Filter clause produced by industries = ["SaaS", "Fintech"]:
+
+{
+  "bool": {
+    "should": [
+      {
+        "bool": {
+          "should": [
+            { "match": { "industry": { "query": "SaaS",    "fuzziness": "AUTO" } } },
+            { "term":  { "industry_tags": "saas"    } },
+            { "match": { "searchable_text": "SaaS"  } }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      {
+        "bool": {
+          "should": [
+            { "match": { "industry": { "query": "Fintech", "fuzziness": "AUTO" } } },
+            { "term":  { "industry_tags": "fintech" } },
+            { "match": { "searchable_text": "Fintech" } }
+          ],
+          "minimum_should_match": 1
+        }
+      }
+    ],
+    "minimum_should_match": 1
+  }
+}
+
+--- 2f  match_all fallback (no optimized_query text) ---
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "bool": {
+      "must": [{ "match_all": {} }],
+      "filter": [ /* same filter clauses as above */ ]
+    }
+  }
+}
+
+
+================================================================================
+ QUERY 3 — Semantic BM25 Leg  (search_strategies.py · SemanticSearchStrategy._build_bm25_query)
+================================================================================
+ENDPOINT : POST /api/search/intelligent
+STRATEGY : SemanticSearchStrategy — BM25 leg of the hybrid RRF pipeline.
+           Triggered for SEMANTIC intent (natural language, synonyms, concepts).
+CONTEXT  : One of TWO parallel queries issued by SemanticSearchStrategy.search().
+           Over-fetches (fetch_size = max(limit × rrf.fetch_multiplier, 100)) so
+           the RRF merge stage has enough candidates from both legs.
+           Field boosts come from the LLM intent classifier's field_boosts dict,
+           merged with defaults from search_config.yaml → field_boosts.defaults.
+           (LLM values override defaults; missing fields fall back to defaults.)
+
+POST /companies-new/_search
+{
+  "size": 100,
+  "from": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "multi_match": {
+            "query": "enterprise software companies focused on HR automation",
+            "fields": [
+              "name^2",
+              "domain",
+              "searchable_text^3",
+              "industry^2",
+              "locality"
+            ],
+            "type": "best_fields",
+            "operator": "or"
+          }
+        }
+      ],
+      "filter": [
+        /* same _build_filters clauses as Query 2b–2f */
+      ]
+    }
+  }
+}
+
+Note: The fields array above uses LLM-overridden boosts.  The classifier may
+raise searchable_text and industry boosts when the query is concept-heavy,
+and raise name boost when a company name is identified in the query.
+Default boosts (no LLM override): name^2, domain, searchable_text, industry, locality.
+
+
+================================================================================
+ QUERY 4 — Semantic k-NN Leg  (search_strategies.py · SemanticSearchStrategy._build_knn_query)
+================================================================================
+ENDPOINT : POST /api/search/intelligent  (same request as Query 3, parallel call)
+STRATEGY : SemanticSearchStrategy — k-NN vector leg of the hybrid RRF pipeline.
+CONTEXT  : Second of two parallel queries.  A BGE embedding is generated for the
+           optimized query using the local sentence-transformers model (or ONNX).
+           knn_k (default 100) controls ANN candidate count.
+           Filters are pushed inside the knn clause for pre-filtering efficiency
+           (OpenSearch 2.x supports this natively).
+           Results from Query 3 and Query 4 are merged with RRF:
+             rrf_score(doc) = 1/(k+bm25_rank) + 1/(k+knn_rank),  k=60 by default.
+
+POST /companies-new/_search
+{
+  "size": 100,
+  "from": 0,
+  "query": {
+    "knn": {
+      "vector_embedding": {
+        "vector": [0.021, -0.045, 0.118, /* ... 768 floats ... */],
+        "k": 100,
+        "filter": {
+          "bool": {
+            "must": [
+              /* same _build_filters clauses as Query 2b–2f, when filters present */
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+
+Note: The "filter" key inside the knn clause is omitted entirely when no
+user filters are active (no filter clauses are generated by _build_filters).
+
+
+================================================================================
+ QUERY 5 — Agent Tool: Company Resolution after Web Event Extraction
+           (agent_service.py · web_search_company_events tool, inner resolve loop)
+================================================================================
+ENDPOINT : POST /api/search/intelligent  (agentic path, internally)
+STRATEGY : AgenticSearchStrategy → AgentService.run() → web_search_company_events tool.
+CONTEXT  : After the LLM agent calls web_search_company_events (Tavily web search),
+           the tool extracts a list of company names and events from the raw web
+           results using an LLM.  For each extracted company name, this query
+           resolves it against the internal index to get a full company document
+           (with company_id, domain, industry, etc.).
+           Fuzziness=AUTO is intentional here — company names from web snippets
+           may have minor typos or spelling variants.
+           resolve_per_name (default 2) limits results per name lookup.
+           min_resolve_score (default 1.0) gates acceptance — low-scoring hits
+           trigger creation of a synthetic doc instead.
+
+POST /companies-new/_search
+{
+  "size": 2,
+  "from": 0,
+  "query": {
+    "multi_match": {
+      "query": "Stripe",
+      "fields": ["name^3", "domain"],
+      "type": "best_fields",
+      "fuzziness": "AUTO"
+    }
+  }
+}
+
+Note: This query runs once per extracted company name.  For a web search result
+with 10 companies, it issues 10 sequential OpenSearch calls.
+Docs that score below min_resolve_score are replaced with a "synthetic" document
+carrying only the event data (no OpenSearch source fields).
+
+
+================================================================================
+ QUERY 6 — Agent Tool: lookup_companies_by_name
+           (agent_service.py · lookup_companies_by_name tool)
+================================================================================
+ENDPOINT : POST /api/search/intelligent  (agentic path, internally)
+STRATEGY : AgenticSearchStrategy → AgentService.run() → lookup_companies_by_name tool.
+CONTEXT  : The LLM agent can call this tool directly when it knows specific company
+           names and wants to verify or enrich them from the internal index.
+           Input is a comma-separated list of names (e.g. "Stripe, Braintree, Square").
+           Query is identical in structure to Query 5 — one call per name.
+           Deduplication is enforced via a seen_ids set across all names in the batch.
+
+POST /companies-new/_search
+{
+  "size": 2,
+  "from": 0,
+  "query": {
+    "multi_match": {
+      "query": "Braintree",
+      "fields": ["name^3", "domain"],
+      "type": "best_fields",
+      "fuzziness": "AUTO"
+    }
+  }
+}
+
+Note: No filters are applied in this resolution query — the purpose is pure
+name-to-document matching, not filtered search.
+
+
+================================================================================
+ QUERY 7 — Legacy Vector Search Utility  (opensearch_service.py · vector_search)
+================================================================================
+ENDPOINT : Internal utility method — not called by any active search strategy.
+STRATEGY : OpensearchService.vector_search() — standalone k-NN helper.
+CONTEXT  : A lower-level utility that can be called directly.  Not used by
+           RegularSearchStrategy, SemanticSearchStrategy, or AgenticSearchStrategy —
+           those strategies all invoke the higher-level search() or _build_knn_query().
+           Retained for ad-hoc / administrative use.
+
+POST /companies-new/_search
+{
+  "size": 20,
+  "from": 0,
+  "query": {
+    "knn": {
+      "<vector_field>": {
+        "vector": [0.021, -0.045, /* ... floats ... */],
+        "k": 20
+      }
+    }
+  }
+}
+
+Note: Unlike Query 4, this method has no filter support and uses a flat knn clause,
+not the strategy's filter-inside-knn pattern.  min_score (default 0.7) is applied
+in Python after results are returned, not at the OpenSearch level.
+
+
+================================================================================
+ SHARED FILTER CLAUSES REFERENCE  (_build_filters in search_strategies.py)
+================================================================================
+These filter clauses are appended to the bool.filter array in Queries 2, 3, and 4.
+They are assembled from the unified filters dict passed to SearchContext.
+
+--- location_country = "Australia" ---
+{
+  "bool": {
+    "should": [
+      { "term": { "country":      "australia" } },
+      { "term": { "country_tags": "australia" } }
+    ],
+    "minimum_should_match": 1
+  }
+}
+
+--- location_state = "California" ---
+{
+  "bool": {
+    "should": [
+      { "match_phrase": { "locality": "California" } },
+      { "match":        { "country":  "california" } }
+    ],
+    "minimum_should_match": 1
+  }
+}
+
+--- location_city = "San Francisco" ---
+{ "match_phrase": { "locality": "San Francisco" } }
+
+--- location (legacy free-text) = "New York" ---
+{
+  "multi_match": {
+    "query":  "New York",
+    "fields": ["country", "state", "city", "locality"]
+  }
+}
+
+--- industries = ["SaaS"] (single industry) ---
+{
+  "bool": {
+    "should": [
+      { "match": { "industry":       { "query": "SaaS", "fuzziness": "AUTO" } } },
+      { "term":  { "industry_tags":  "saas" } },
+      { "match": { "searchable_text": "SaaS" } }
+    ],
+    "minimum_should_match": 1
+  }
+}
+
+--- industries = ["SaaS", "Fintech"] (multiple industries) ---
+{
+  "bool": {
+    "should": [
+      {
+        "bool": {
+          "should": [
+            { "match": { "industry":       { "query": "SaaS",    "fuzziness": "AUTO" } } },
+            { "term":  { "industry_tags":  "saas"    } },
+            { "match": { "searchable_text": "SaaS"   } }
+          ],
+          "minimum_should_match": 1
+        }
+      },
+      {
+        "bool": {
+          "should": [
+            { "match": { "industry":       { "query": "Fintech", "fuzziness": "AUTO" } } },
+            { "term":  { "industry_tags":  "fintech" } },
+            { "match": { "searchable_text": "Fintech" } }
+          ],
+          "minimum_should_match": 1
+        }
+      }
+    ],
+    "minimum_should_match": 1
+  }
+}
+
+--- year_from = 2015, year_to = 2023 ---
+{ "range": { "year_founded": { "gte": 2015, "lte": 2023 } } }
+
+--- year_from only ---
+{ "range": { "year_founded": { "gte": 2015 } } }
+
+--- year (exact year) ---
+{ "range": { "year_founded": { "gte": 2019, "lte": 2019 } } }
+
+--- size_range = "51-200" ---
+{ "term": { "size_range": "51-200" } }
+
+
+================================================================================
+ QUERY ROUTING SUMMARY
+================================================================================
+
+  User request arrives at POST /api/search/intelligent
+  └─ IntentClassifier (GPT-4o-mini + Instructor) classifies intent
+       │
+       ├─ REGULAR intent  ──►  Query 2  (BM25, single call)
+       │
+       ├─ SEMANTIC intent ──►  Query 3  (BM25 leg, parallel)
+       │                  ──►  Query 4  (k-NN leg, parallel)
+       │                       (results merged via RRF, then paginated)
+       │
+       └─ AGENTIC intent  ──►  AgentService.run()
+                               │  (LLM agent with tool-calling loop)
+                               ├─ web_search_company_events tool
+                               │    └─ Query 5  (per extracted company name)
+                               └─ lookup_companies_by_name tool
+                                    └─ Query 6  (per provided company name)
+
+  User request arrives at POST /api/search  (basic search)
+  └─ Query 1 + Query 1b  (BM25 + aggregations, single call via search_with_aggs)
+
+================================================================================
