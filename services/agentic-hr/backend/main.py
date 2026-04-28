@@ -1,7 +1,15 @@
+import os
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Allow running as either `uvicorn main:app` from backend/ or
+# `uvicorn backend.main:app` from services/agentic-hr.
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
 
 from graph.builder import get_compiled_graph
 from logger import configure_logging, get_logger

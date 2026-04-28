@@ -3,6 +3,7 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import type { SolutionPlugin } from '@/solutions/_types';
 import { cn } from '@/lib/utils';
+import { DemoErrorBoundary } from '@/components/demo-error-boundary';
 
 const TAB_LABELS: Record<string, string> = {
   overview: 'Overview',
@@ -42,7 +43,9 @@ export function SolutionTabs({ solution }: { solution: SolutionPlugin }) {
 
       {tabs.includes('demo') && (
         <Tabs.Content value="demo" className="pt-8">
-          {Demo ? <Demo /> : <Placeholder label="Demo" />}
+          <DemoErrorBoundary>
+            {Demo ? <Demo /> : <Placeholder label="Demo" />}
+          </DemoErrorBoundary>
         </Tabs.Content>
       )}
 
