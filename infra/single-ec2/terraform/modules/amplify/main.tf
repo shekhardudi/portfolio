@@ -41,7 +41,7 @@ resource "aws_amplify_app" "web" {
     NEXT_TELEMETRY_DISABLED        = "1"
   }
 
-  build_spec = file("${path.module}/../../../../apps/web/amplify.yml")
+  build_spec = file("${path.module}/../../../../../apps/web/amplify.yml")
 
   tags = var.tags
 }

@@ -1,0 +1,103 @@
+name: portfolio-local
+
+networks:
+  portfolio:
+    driver: bridge
+
+volumes:
+  opensearch-data:
+  redis-data:
+  pgdata:
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: portfolio-local-opensearch
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD:-MySecurePassword123!}
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    networks: [portfolio]
+
+  redis:
+    image: redis:7-alpine
+    container_name: portfolio-local-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [portfolio]
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: portfolio-local-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentic_hr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentic_hr_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-agentic_hr}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../../services/agentic-hr/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentic_hr}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [portfolio]
+
+  intelli-search:
+    build:
+      context: ../../../services/intelli-search
+      dockerfile: Dockerfile
+    container_name: portfolio-local-intelli-search
+    env_file: env/intelli-search.env
+    ports:
+      - "8001:8000"
+    depends_on:
+      - opensearch
+      - redis
+    restart: unless-stopped
+    networks: [portfolio]
+
+  agentic-hr:
+    build:
+      context: ../../../services/agentic-hr/backend
+      dockerfile: Dockerfile
+    container_name: portfolio-local-agentic-hr
+    env_file: env/agentic-hr.env
+    environment:
+      BACKEND_PORT: "8000"
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [portfolio]
+
+  linkedin-generator:
+    build:
+      context: ../../../services/linkedin-generator
+      dockerfile: Dockerfile
+    container_name: portfolio-local-linkedin-generator
+    env_file: env/linkedin-generator.env
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+    networks: [portfolio]

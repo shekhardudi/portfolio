@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euxo pipefail
+
+LOG=/var/log/portfolio-userdata.log
+exec > >(tee -a $LOG) 2>&1
+
+yum update -y
+yum install -y git docker jq awscli
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+DOCKER_PLUGIN_DIR=/usr/libexec/docker/cli-plugins
+mkdir -p "$DOCKER_PLUGIN_DIR"
+curl -sSL "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-$(uname -s)-$(uname -m)" \
+  -o "$DOCKER_PLUGIN_DIR/docker-compose"
+chmod +x "$DOCKER_PLUGIN_DIR/docker-compose"
+
+sudo -u ec2-user -H bash <<EOF
+cd /home/ec2-user
+if [[ ! -d portfolio ]]; then
+  git clone ${github_repo_url} portfolio
+fi
+cd portfolio
+git pull --ff-only || true
+EOF
+
+REPO=/home/ec2-user/portfolio
+mkdir -p $REPO/infra/multi-ec2/docker/env
+
+ssm_to_envfile() {
+  local svc=$1
+  local out=$REPO/infra/multi-ec2/docker/env/$svc.env
+  : > "$out"
+  aws ssm get-parameters-by-path \
+    --path "${ssm_param_path}/$svc" \
+    --recursive --with-decryption \
+    --region "${aws_region}" \
+    --query 'Parameters[].[Name,Value]' \
+    --output text 2>/dev/null | \
+  while read -r name value; do
+    key=$${name##*/}
+    printf "%s=%s\n" "$key" "$value" >> "$out"
+  done
+  chmod 600 "$out"
+  chown ec2-user:ec2-user "$out"
+}
+
+ssm_to_envfile intelli-search
+ssm_to_envfile agentic-hr
+ssm_to_envfile linkedin-generator
+
+sudo -u ec2-user -H bash <<EOF
+cd $REPO/infra/multi-ec2/docker
+docker compose -f docker-compose.multi-ec2.yml up -d --build
+EOF
+
+echo "user-data complete at $(date -u +%FT%TZ)" >> $LOG

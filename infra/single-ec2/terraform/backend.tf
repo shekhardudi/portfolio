@@ -1,5 +1,5 @@
 # Remote state lives in S3; lock table in DynamoDB. Bootstrap both with
-# scripts/bootstrap-tf-state.sh. Provide bucket / table at init time:
+# scripts/single-ec2/bootstrap-tf-state.sh. Provide bucket / table at init time:
 #
 #   terraform init \
 #     -backend-config="bucket=shekharlabs-tfstate" \

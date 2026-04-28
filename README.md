@@ -26,10 +26,11 @@ services/                     # three FastAPI backends (copied & cleaned)
   agentic-hr/
   linkedin-generator/
 infra/
-  docker/                     # docker-compose.prod.yml + nginx config
-  terraform/                  # IaC for EC2, Route53, CloudFront, Amplify
+  single-ec2/                 # current prod topology (docker + terraform)
+  multi-ec2/                  # multi-instance topology (docker + terraform)
+  local/                      # local backend docker runtime
 docs/                         # architecture, deployment, per-solution docs
-scripts/                      # bootstrap-tf-state.sh, sync-from-source.sh
+scripts/                      # compatibility wrappers + track-specific scripts
 ```
 
 ## Quick links
@@ -58,7 +59,7 @@ docker run --rm -p 8000:8000 --env-file .env <name>
 
 Combined runtime (mirrors prod):
 ```
-cd infra/docker
+cd infra/single-ec2/docker
 cp env/intelli-search.env.example   env/intelli-search.env
 cp env/agentic-hr.env.example       env/agentic-hr.env
 cp env/linkedin-generator.env.example env/linkedin-generator.env
@@ -66,10 +67,16 @@ cp env/linkedin-generator.env.example env/linkedin-generator.env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+Local backend-only runtime:
+```
+./scripts/local/bootstrap-env.sh
+./scripts/local/up.sh
+```
+
 ## Deployment
 
 See [docs/deployment.md](docs/deployment.md). One-line summary:
 ```
-cd infra/terraform/envs/prod
+cd infra/single-ec2/terraform/envs/prod
 terraform init && terraform apply
 ```

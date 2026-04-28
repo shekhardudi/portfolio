@@ -6,6 +6,8 @@ authors = [{ name = "Your Name", email = "you@example.com" }]
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "crewai[tools]==1.9.3",
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.24.0,<1.0.0",
     "streamlit>=1.32.0",
     "arxiv>=2.1.0",
     "tavily-python>=0.3.3",
@@ -21,14 +23,14 @@ dependencies = [
 ]
 
 [project.scripts]
-linkedin_post_generator = "linkedin_post_generator.main:run"
-run_crew = "linkedin_post_generator.main:run"
-run_scout = "linkedin_post_generator.main:run_scout"
-run_app = "linkedin_post_generator.main:run_app"
-train = "linkedin_post_generator.main:train"
-replay = "linkedin_post_generator.main:replay"
-test = "linkedin_post_generator.main:test"
-run_with_trigger = "linkedin_post_generator.main:run_with_trigger"
+linkedin_post_generator = "main:run"
+run_crew = "main:run"
+run_scout = "main:run_scout"
+run_app = "main:run_app"
+train = "main:train"
+replay = "main:replay"
+test = "main:test"
+run_with_trigger = "main:run_with_trigger"
 
 [build-system]
 requires = ["hatchling"]
@@ -36,6 +38,9 @@ build-backend = "hatchling.build"
 
 [tool.crewai]
 type = "crew"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.uv]
 # onnxruntime 1.20+ dropped Intel Mac (x86_64) wheels — pin to last supported version

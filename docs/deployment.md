@@ -21,7 +21,7 @@ nameservers to the four NS values Terraform outputs as `route53_name_servers` af
 Creates the S3 bucket + DynamoDB lock table. Idempotent.
 
 ```bash
-./scripts/bootstrap-tf-state.sh
+./scripts/single-ec2/bootstrap-tf-state.sh
 ```
 
 Outputs the exact `terraform init` command to run next.
@@ -54,7 +54,7 @@ chmod 400 ~/.ssh/portfolio.pem
 ## 4. Configure & apply
 
 ```bash
-cd infra/terraform
+cd infra/single-ec2/terraform
 cp envs/prod/terraform.tfvars.example envs/prod/terraform.tfvars
 # fill in: ssh_ingress_cidr, key_name, github_repo_url
 
@@ -113,15 +113,15 @@ Two paths:
 ```bash
 ssh -i ~/.ssh/portfolio.pem ec2-user@$(terraform output -raw ec2_public_ip)
 cd portfolio && git pull
-cd infra/docker
+cd infra/single-ec2/docker
 docker compose -f docker-compose.prod.yml up -d --build <service-name>
 ```
 
 Or, after editing locally:
 ```bash
-./scripts/sync-from-source.sh   # if pulling fresh code from ../ai-workspace/
+./scripts/single-ec2/sync-from-source.sh   # if pulling fresh code from ../ai-workspace/
 git push
-ssh ... && cd portfolio && git pull && docker compose -f infra/docker/docker-compose.prod.yml up -d --build
+ssh ... && cd portfolio && git pull && docker compose -f infra/single-ec2/docker/docker-compose.prod.yml up -d --build
 ```
 
 ## 8. Operational tasks
@@ -133,7 +133,7 @@ ssh ... && cd portfolio && git pull && docker compose -f infra/docker/docker-com
   ```
 - **Inspect logs**:
   ```bash
-  docker compose -f infra/docker/docker-compose.prod.yml logs -f intelli-search
+  docker compose -f infra/single-ec2/docker/docker-compose.prod.yml logs -f intelli-search
   sudo tail -f /var/log/nginx/error.log
   ```
 - **Rotate a secret**: `aws ssm put-parameter --overwrite ...`, then re-run user-data
@@ -142,9 +142,9 @@ ssh ... && cd portfolio && git pull && docker compose -f infra/docker/docker-com
 ## 9. Tearing down
 
 ```bash
-cd infra/terraform
+cd infra/single-ec2/terraform
 terraform destroy -var-file=envs/prod/terraform.tfvars
 ```
 
 S3 state bucket + DynamoDB lock table are NOT destroyed by Terraform — delete manually if needed
-(`scripts/bootstrap-tf-state.sh` is the inverse, just reverse-engineer the AWS CLI calls).
+(`scripts/single-ec2/bootstrap-tf-state.sh` is the inverse, just reverse-engineer the AWS CLI calls).

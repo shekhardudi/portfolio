@@ -15,7 +15,7 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import TavilySearchTool
 
-from linkedin_post_generator.tools import ArxivSearchTool
+from src.tools.arxiv_search import ArxivSearchTool
 
 
 @CrewBase

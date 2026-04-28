@@ -7,8 +7,8 @@ from datetime import datetime, date, timedelta
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
-from linkedin_post_generator.engines.authority_crew.crew import AuthorityCrew
-from linkedin_post_generator.utils.user_profile import load_user_profile
+from engines.authority_crew.crew import AuthorityCrew
+from utils.user_profile import load_user_profile
 
 
 def _default_inputs() -> dict:
@@ -37,7 +37,7 @@ def run():
 
 def run_scout():
     """Run Pulse Scout engine (CLI entry point) — all 5 modules, last 7 days."""
-    from linkedin_post_generator.engines.pulse_scout import PulseScout
+    from engines.pulse_scout import PulseScout
 
     scout = PulseScout()
 
@@ -68,7 +68,7 @@ def run_app():
     import os
     from pathlib import Path
 
-    app_path = Path(__file__).parent.parent.parent.parent / "app.py"
+    app_path = Path(__file__).parent.parent / "app.py"
     subprocess.run(["streamlit", "run", str(app_path)], check=True)
 
 

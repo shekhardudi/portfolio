@@ -1,0 +1,41 @@
+name: portfolio-multi-ec2
+
+networks:
+  portfolio:
+    driver: bridge
+
+services:
+  intelli-search:
+    build:
+      context: ../../../services/intelli-search
+      dockerfile: Dockerfile
+    container_name: portfolio-intelli-search
+    env_file: env/intelli-search.env
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+    networks: [portfolio]
+
+  agentic-hr:
+    build:
+      context: ../../../services/agentic-hr/backend
+      dockerfile: Dockerfile
+    container_name: portfolio-agentic-hr
+    env_file: env/agentic-hr.env
+    environment:
+      BACKEND_PORT: "8000"
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
+    networks: [portfolio]
+
+  linkedin-generator:
+    build:
+      context: ../../../services/linkedin-generator
+      dockerfile: Dockerfile
+    container_name: portfolio-linkedin-generator
+    env_file: env/linkedin-generator.env
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+    networks: [portfolio]

@@ -42,11 +42,11 @@ EOF
 REPO=/home/ec2-user/portfolio
 
 # ---- hydrate env files from SSM ------------------------------------------
-mkdir -p $REPO/infra/docker/env
+mkdir -p $REPO/infra/single-ec2/docker/env
 
 ssm_to_envfile() {
   local svc=$1
-  local out=$REPO/infra/docker/env/$svc.env
+  local out=$REPO/infra/single-ec2/docker/env/$svc.env
   : > "$out"
   aws ssm get-parameters-by-path \
     --path "${ssm_param_path}/$svc" \
@@ -67,7 +67,7 @@ ssm_to_envfile agentic-hr
 ssm_to_envfile linkedin-generator
 
 # ---- nginx host config ----------------------------------------------------
-cp $REPO/infra/docker/nginx/nginx.conf /etc/nginx/nginx.conf
+cp $REPO/infra/single-ec2/docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Dashboards basic-auth password from SSM
 DASH_PW=$(aws ssm get-parameter \
@@ -91,7 +91,7 @@ systemctl reload nginx || systemctl restart nginx
 
 # ---- bring up the stack ---------------------------------------------------
 sudo -u ec2-user -H bash <<EOF
-cd $REPO/infra/docker
+cd $REPO/infra/single-ec2/docker
 docker compose -f docker-compose.prod.yml pull || true
 docker compose -f docker-compose.prod.yml up -d --build
 EOF

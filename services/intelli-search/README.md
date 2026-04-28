@@ -25,7 +25,7 @@ docker run --rm -p 8001:8000 --env-file .env intelli-search
 
 ## Prod port
 
-`8001` on the host (mapped to container `:8000`). See `infra/docker/docker-compose.prod.yml`.
+`8001` on the host (mapped to container `:8000`). See `infra/single-ec2/docker/docker-compose.prod.yml`.
 
 ## Required env
 

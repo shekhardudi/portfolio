@@ -66,13 +66,13 @@ components, and the framework wires them into a tabbed page automatically.
 ## Compute
 
 - **Instance**: `t3.xlarge` Amazon Linux 2, 150 GB gp3 root volume, encrypted.
-- **User-data** (`infra/terraform/modules/ec2/user-data.sh.tftpl`):
+- **User-data** (`infra/single-ec2/terraform/modules/ec2/user-data.sh.tftpl`):
   1. Install Docker, docker-compose v2, nginx, certbot, awscli.
   2. `git clone` the portfolio repo.
-  3. `aws ssm get-parameters-by-path` → write `infra/docker/env/<service>.env` files.
-  4. Drop `infra/docker/nginx/nginx.conf` into `/etc/nginx/`.
+     3. `aws ssm get-parameters-by-path` → write `infra/single-ec2/docker/env/<service>.env` files.
+     4. Drop `infra/single-ec2/docker/nginx/nginx.conf` into `/etc/nginx/`.
   5. Issue Let's Encrypt cert for `api.*` and `dashboards.*` (CloudFront → EC2 leg).
-  6. `docker compose -f infra/docker/docker-compose.prod.yml up -d`.
+     6. `docker compose -f infra/single-ec2/docker/docker-compose.prod.yml up -d`.
 
 ## Data services
 

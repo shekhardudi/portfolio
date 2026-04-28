@@ -48,4 +48,4 @@ docker run --rm -p 8002:8000 --env-file .env -e BACKEND_PORT=8000 agentic-hr
 ```
 
 You'll need a Postgres instance running externally (or use the full
-`infra/docker/docker-compose.prod.yml`).
+`infra/single-ec2/docker/docker-compose.prod.yml`).

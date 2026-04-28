@@ -27,6 +27,7 @@ out/
 .cache/
 dist/
 build/
+*.tsbuildinfo
 
 # --- Env / secrets ---
 .env
@@ -66,7 +67,13 @@ logs/
 *.pid
 
 # --- Project-specific ---
-infra/docker/env/*.env
-!infra/docker/env/*.env.example
+infra/single-ec2/docker/env/*.env
+!infra/single-ec2/docker/env/*.env.example
+infra/local/docker/env/*.env
+!infra/local/docker/env/*.env.example
+infra/multi-ec2/docker/env/*.env
+!infra/multi-ec2/docker/env/*.env.example
 services/*/output_markdown/
 services/*/outputs/
+services/intelli-search/data-pipeline/companies_sorted.csv
+

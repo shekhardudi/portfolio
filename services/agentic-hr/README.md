@@ -32,7 +32,7 @@ docker run --rm -p 8002:8000 \
 - Gitea — code-review workflow demo
 - Mattermost — chat-driven request demo
 
-All four are wired up in `infra/docker/docker-compose.prod.yml`.
+All four are wired up in `infra/single-ec2/docker/docker-compose.prod.yml`.
 
 ## Bootstrapping the DB
 

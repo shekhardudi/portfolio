@@ -3,19 +3,42 @@ name: terraform-ci
 on:
   push:
     paths:
-      - "infra/terraform/**"
+      - "infra/single-ec2/terraform/**"
+      - "infra/multi-ec2/terraform/**"
       - ".github/workflows/terraform-ci.yml"
   pull_request:
     paths:
-      - "infra/terraform/**"
+      - "infra/single-ec2/terraform/**"
+      - "infra/multi-ec2/terraform/**"
       - ".github/workflows/terraform-ci.yml"
 
 jobs:
-  fmt-validate:
+  fmt-validate-single:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: infra/terraform
+        working-directory: infra/single-ec2/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: fmt
+        run: terraform fmt -recursive -check -diff
+
+      - name: init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: validate
+        run: terraform validate -no-color
+
+  fmt-validate-multi:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/multi-ec2/terraform
     steps:
       - uses: actions/checkout@v4
 

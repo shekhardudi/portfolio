@@ -87,7 +87,7 @@ def _run_crew(job_id: str, req: GenerateRequest) -> None:
         _set_status(job_id, "running")
         log.info("crew.start", extra={"job_id": job_id, "topic": req.topic})
         # Imported lazily so module import (and FastAPI startup) stays fast.
-        from linkedin_post_generator.engines.authority_crew.crew import AuthorityCrew
+        from src.engines.authority_crew.crew import AuthorityCrew
 
         output = AuthorityCrew().crew().kickoff(inputs=_build_inputs(req))
         # CrewAI returns either a string or an object with .raw — normalize.
