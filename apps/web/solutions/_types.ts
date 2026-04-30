@@ -22,6 +22,10 @@ export interface SolutionMeta {
   highlights: readonly string[];
   // Anchor for tabs the solution provides — order is preserved
   tabs?: readonly ('overview' | 'demo' | 'architecture' | 'api' | 'lessons')[];
+  architecture?: {
+    image?: string;           // public asset path, e.g. "/architectures/intelli-search.png"
+    alt?: string;
+  };
   apiBaseEnvVar: string;      // e.g. NEXT_PUBLIC_INTELLI_SEARCH_API
 }
 
@@ -29,6 +33,8 @@ export interface SolutionPlugin {
   meta: SolutionMeta;
   Demo?: ComponentType;
   Architecture?: ComponentType;
+  Overview?: ComponentType;
+  API?: ComponentType;
   // Loaded lazily from content.mdx
   hasContent?: boolean;
 }

@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { RotateCcw, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   getCountryFacets,
+  getCityFacets,
   getIndustryFacets,
   getStateFacets,
   type UserFilters,
@@ -43,6 +44,7 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
   const [industryOptions, setIndustryOptions] = useState<string[]>([]);
   const [countryOptions, setCountryOptions] = useState<string[]>([]);
   const [stateOptions, setStateOptions] = useState<string[]>([]);
+  const [cityOptions, setCityOptions] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -99,6 +101,35 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
     };
   }, [filters.country]);
 
+  useEffect(() => {
+    let mounted = true;
+    const ctrl = new AbortController();
+
+    if (!filters.country || !filters.state) {
+      setCityOptions([]);
+      return () => {
+        mounted = false;
+        ctrl.abort();
+      };
+    }
+
+    (async () => {
+      try {
+        const cities = await getCityFacets(filters.country ?? '', filters.state ?? '', ctrl.signal);
+        if (!mounted) return;
+        setCityOptions(cities);
+      } catch {
+        if (!mounted) return;
+        setCityOptions([]);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      ctrl.abort();
+    };
+  }, [filters.country, filters.state]);
+
   const topIndustries = industryOptions.slice(0, 10);
 
   // Trigger a 2-pulse glow animation whenever the AI-extracted highlight set changes.
@@ -119,6 +150,15 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
     !!(aiHighlights?.industries && aiHighlights.industries.length > 0) ||
     !!aiHighlights?.country;
 
+  const hasActiveFilters =
+    filters.industries.length > 0 ||
+    !!filters.size_range ||
+    !!filters.country ||
+    !!filters.state ||
+    !!filters.city ||
+    filters.year_from != null ||
+    filters.year_to != null;
+
   function clearAi() {
     // Removes only the AI-highlighted parts; leaves user picks alone.
     const next = { ...filters };
@@ -133,18 +173,33 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
     onChange(next);
   }
 
+  function clearAll() {
+    onChange({ ...EMPTY_FILTERS });
+  }
+
   return (
     <aside className={cn('space-y-5 rounded-xl border border-border bg-muted/40 p-4', className)}>
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-2">
         <h4 className="text-sm font-semibold">Filters</h4>
-        {hasGlow && (
+        <div className="flex items-center gap-2">
+          {hasGlow && (
+            <button
+              type="button"
+              onClick={clearAi}
+              className="inline-flex items-center gap-1 text-xs text-foreground/75 hover:text-foreground"
+            >
+              <Sparkles className="h-3 w-3" /> Clear AI
+            </button>
+          )}
           <button
-            onClick={clearAi}
-            className="inline-flex items-center gap-1 text-xs text-foreground/75 hover:text-foreground"
+            type="button"
+            onClick={clearAll}
+            disabled={!hasActiveFilters}
+            className="inline-flex items-center gap-1.5 rounded-md border border-foreground/25 bg-foreground/10 px-2.5 py-1 text-sm font-medium text-foreground hover:bg-foreground/20 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Sparkles className="h-3 w-3" /> Clear AI filters
+            <RotateCcw className="h-3.5 w-3.5" /> Clear all
           </button>
-        )}
+        </div>
       </header>
 
       {/* Industries */}
@@ -225,10 +280,11 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
             disabled={!filters.country}
             label="State"
             value={filters.state ?? ''}
-            onChange={(v) => onChange({ ...filters, state: v })}
+            onChange={(v) => onChange({ ...filters, state: v, city: '' })}
           />
-          <Input
-            label="City"
+          <CitySelect
+            options={cityOptions}
+            disabled={!filters.state}
             value={filters.city ?? ''}
             onChange={(v) => onChange({ ...filters, city: v })}
           />
@@ -322,6 +378,35 @@ function StateSelect({
         <option value="">All states</option>
         {options.map((s) => (
           <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function CitySelect({
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="sr-only">City</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <option value="">All cities</option>
+        {options.map((c) => (
+          <option key={c} value={c}>{c}</option>
         ))}
       </select>
     </label>

@@ -20,23 +20,47 @@ export default function IntelliSearchBar({
 }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  function selectSuggestion(value: string) {
+    onQueryChange(value);
+    setOpen(false);
+    setActiveIndex(-1);
+  }
 
   useEffect(() => {
     if (!query.trim() || query.trim().length < 2) {
       setSuggestions([]);
+      setActiveIndex(-1);
       return;
     }
-    const ctrl = new AbortController();
+    let cancelled = false;
     const timer = setTimeout(async () => {
-      const list = await getAutocompleteSuggestions(query, ctrl.signal);
-      setSuggestions(list.slice(0, 6));
+      try {
+        const list = await getAutocompleteSuggestions(query);
+        if (!cancelled) setSuggestions(list.slice(0, 6));
+      } catch {
+        // ignore fetch errors for autocomplete
+      }
     }, 220);
     return () => {
-      ctrl.abort();
+      cancelled = true;
       clearTimeout(timer);
     };
   }, [query]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (suggestions.length === 0) {
+      setOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+    if (activeIndex >= suggestions.length) {
+      setActiveIndex(suggestions.length - 1);
+    }
+  }, [open, suggestions, activeIndex]);
 
   // Close on outside click
   useEffect(() => {
@@ -61,10 +85,34 @@ export default function IntelliSearchBar({
           <Search className="h-4 w-4 text-muted-foreground" />
           <input
             value={query}
-            onFocus={() => setOpen(true)}
+            onFocus={() => setOpen(suggestions.length > 0)}
             onChange={(e) => {
               onQueryChange(e.target.value);
               setOpen(true);
+              setActiveIndex(-1);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                if (!open && suggestions.length > 0) setOpen(true);
+                if (suggestions.length > 0) {
+                  e.preventDefault();
+                  setActiveIndex((i) => (i + 1) % suggestions.length);
+                }
+                return;
+              }
+
+              if (e.key === 'ArrowUp') {
+                if (suggestions.length > 0) {
+                  e.preventDefault();
+                  setActiveIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+                }
+                return;
+              }
+
+              if (e.key === 'Enter' && open && activeIndex >= 0 && activeIndex < suggestions.length) {
+                e.preventDefault();
+                selectSuggestion(suggestions[activeIndex]);
+              }
             }}
             placeholder="search companies"
             className="h-11 w-full bg-transparent outline-none placeholder:text-muted-foreground"
@@ -84,17 +132,18 @@ export default function IntelliSearchBar({
         <ul className={cn(
           'absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-border bg-background shadow-lg',
         )}>
-          {suggestions.map((s) => (
+          {suggestions.map((s, idx) => (
             <li key={s}>
               <button
                 type="button"
                 onMouseDown={(e) => {
-                  e.preventDefault(); // keep input focus
-                  onQueryChange(s);
-                  setOpen(false);
-                  onSubmit();
+                  e.preventDefault(); // prevent input blur
+                  selectSuggestion(s);
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                className={cn(
+                  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted',
+                  idx === activeIndex && 'bg-muted',
+                )}
               >
                 <Search className="h-3 w-3 text-muted-foreground" />
                 <span>{s}</span>

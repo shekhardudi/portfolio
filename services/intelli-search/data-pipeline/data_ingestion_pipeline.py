@@ -234,7 +234,8 @@ def _parse_locality(locality: str) -> tuple[str, str]:
     parts = [p.strip().lower() for p in str(locality or "").split(",") if p.strip()]
     city = parts[0] if parts else ""
     state = parts[1] if len(parts) > 1 else ""
-    return city, state
+    country = parts[2] if len(parts) > 2 else ""
+    return city, state, country
 
 
 def _industry_tags(industry: str) -> list[str]:
@@ -265,17 +266,17 @@ def enrich_records(records: list[dict]) -> list[EnrichedRow]:
     -------
     list[EnrichedRow] — parallel to `records`.
     Each element is:
-        (industry, locality, city, state, industry_tags, size_range, country_tags)
+        (industry, locality, city, state, country, industry_tags, size_range, country_tags)
     """
     enriched: list[EnrichedRow] = []
     for row in records:
         industry = row.get("industry", "Unknown")
         locality = row.get("locality", "")
-        city, state = _parse_locality(locality)
+        city, state, country = _parse_locality(locality)
         tags = _industry_tags(industry)
-        ctags = _country_tags(row.get("country", ""))
+        ctags = _country_tags(country)
         size = row.get("size_range", "")
-        enriched.append((industry, locality, city, state, tags, size, ctags))
+        enriched.append((industry, locality, city, state, country, tags, size, ctags))
     return enriched
 
 
@@ -305,13 +306,13 @@ def build_texts(records: list[dict], enriched: list[EnrichedRow]) -> list[str]:
     list[str] — one input string per record, ready for the encoder.
     """
     texts = []
-    for row, (industry, locality, _, state, tags, size, ctags) in zip(records, enriched):
+    for row, (industry, locality, city, state, country, tags, size, ctags) in zip(records, enriched):
         text = (
             f"company: {row.get('name', '')}. "
             f"industry: {industry} {' '.join(tags)}. "
             f"size: {size}. "
-            f"location: {locality}, {state + ', ' if state else ''}"
-            f"{row.get('country', 'Unknown')} {' '.join(ctags)}"
+            f"city: {city}, state: {state + ', ' if state else ''}, "
+            f"country: {country} {' '.join(ctags)}"
         )
         texts.append(text)
     return texts
@@ -402,7 +403,7 @@ def build_actions(
     list[dict] — ready to pass directly to bulk_insert_chunk().
     """
     actions = []
-    for row, (industry, locality, city, state, tags, size, ctags), vector in zip(
+    for row, (industry, locality, city, state, country, tags, size, ctags), vector in zip(
         records, enriched, embeddings
     ):
         company_id = str(row.get("Unnamed: 0", ""))
@@ -410,7 +411,7 @@ def build_actions(
         # Build the flat searchable_text field — used by BM25 full-text search
         searchable_text = " ".join(filter(None, [
             row.get("name", ""), industry, " ".join(tags),
-            locality, city, state, row.get("country", ""), size, " ".join(ctags),
+            locality, city, state, country, size, " ".join(ctags),
         ]))
 
         actions.append({
@@ -424,7 +425,7 @@ def build_actions(
                 "industry": industry,
                 "industry_tags": tags,
                 "size_range": size,
-                "country": row.get("country", "Unknown"),
+                "country": country,
                 "country_tags": ctags,
                 "locality": locality,
                 "city": city,
@@ -804,7 +805,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Intelli-Search data ingestion pipeline")
     parser.add_argument(
-        "--csv", default=os.getenv("INGEST_CSV_S3_URI", os.path.join(os.path.dirname(__file__), "companies_balanced.csv")),
+        "--csv", default=os.getenv("INGEST_CSV_S3_URI", "companies_balanced.csv"),
         help="Path or s3://bucket/key URI for the source CSV file",
     )
     parser.add_argument(

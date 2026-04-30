@@ -94,10 +94,27 @@ export interface FacetBucket {
   count?: number;
 }
 
+function cleanText(value?: string): string | undefined {
+  if (!value) return undefined;
+  const cleaned = value.trim().replace(/\s+/g, ' ');
+  return cleaned || undefined;
+}
+
+function toDisplayCase(value?: string): string | undefined {
+  const cleaned = cleanText(value);
+  if (!cleaned) return undefined;
+  return cleaned
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function facetLabel(bucket: FacetBucket): string | undefined {
   // Backend currently emits { value, count }, but keep support for
   // standard OpenSearch-shaped { key, doc_count } as well.
-  return bucket.value ?? bucket.key;
+  return toDisplayCase(bucket.value ?? bucket.key);
 }
 
 interface BackendResult {
@@ -138,27 +155,31 @@ interface BackendSearchResponse {
 
 function normalizeHit(r: BackendResult, i: number): SearchHit {
   // Backend may also tuck linkedin_url under linkedin_profile; surface either.
-  const linkedinUrl = r.linkedin_url ?? r.linkedin_profile?.linkedin_url;
+  const linkedinUrl = cleanText(r.linkedin_url ?? r.linkedin_profile?.linkedin_url);
+  const displayName = toDisplayCase(r.title ?? r.name) ?? cleanText(r.domain);
+  const companyName = toDisplayCase(r.company ?? r.name);
+  const normalizedYear =
+    typeof r.year_founded === 'number' && r.year_founded > 0 ? r.year_founded : undefined;
   return {
     id: r.id ?? r.domain ?? `result-${i}`,
     score: r.score ?? r.relevance_score ?? 0,
-    title: r.title ?? r.name ?? r.domain,
-    company: r.company ?? r.name,
-    domain: r.domain,
-    industry: r.industry,
-    country: r.country,
-    locality: r.locality,
+    title: displayName,
+    company: companyName,
+    domain: cleanText(r.domain),
+    industry: toDisplayCase(r.industry),
+    country: toDisplayCase(r.country),
+    locality: toDisplayCase(r.locality),
     // Display ONLY locality in result rows — country shown via filter chips.
-    location: r.locality ?? r.location,
-    year_founded: r.year_founded,
+    location: toDisplayCase(r.locality ?? r.location),
+    year_founded: normalizedYear,
     size_range: r.size_range != null ? String(r.size_range) : undefined,
-    summary: r.summary ?? r.matching_reason,
-    matching_reason: r.matching_reason,
-    url: r.url ?? (r.domain ? `https://${r.domain}` : undefined),
+    summary: cleanText(r.summary ?? r.matching_reason),
+    matching_reason: cleanText(r.matching_reason),
+    url: cleanText(r.url) ?? (r.domain ? `https://${r.domain}` : undefined),
     linkedin_url: linkedinUrl,
     current_employee_estimate: r.current_employee_estimate,
-    search_method: r.search_method,
-    ranking_source: r.ranking_source,
+    search_method: cleanText(r.search_method),
+    ranking_source: cleanText(r.ranking_source),
     linkedin_profile: r.linkedin_profile,
     event_data: r.event_data,
     raw: r,
@@ -291,6 +312,21 @@ export async function getStateFacets(country: string, signal?: AbortSignal): Pro
     },
   );
   return (raw.states ?? [])
+    .map((b) => facetLabel(b))
+    .filter((v): v is string => Boolean(v));
+}
+
+export async function getCityFacets(country: string, state: string, signal?: AbortSignal): Promise<string[]> {
+  if (!country.trim() || !state.trim()) return [];
+  const params = new URLSearchParams({ country, state });
+  const raw = await apiFetch<{ cities?: FacetBucket[] }>(
+    `${BASE}/api/search/facets/cities?${params.toString()}`,
+    {
+      signal,
+      timeoutMs: 20_000,
+    },
+  );
+  return (raw.cities ?? [])
     .map((b) => facetLabel(b))
     .filter((v): v is string => Boolean(v));
 }

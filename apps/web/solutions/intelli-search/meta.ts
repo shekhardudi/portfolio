@@ -17,6 +17,10 @@ export const meta: SolutionMeta = {
     'Server-Sent Events for streaming results',
   ],
   tabs: ['overview', 'demo', 'architecture', 'api'],
+  architecture: {
+    image: '/architectures/intelli-search.png',
+    alt: 'IntelliSearch architecture diagram',
+  },
   apiBaseEnvVar: 'NEXT_PUBLIC_INTELLI_SEARCH_API',
 };
 

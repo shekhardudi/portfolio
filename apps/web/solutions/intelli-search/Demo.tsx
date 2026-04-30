@@ -166,14 +166,16 @@ export default function Demo() {
   // Highlights handed to FilterPanel/ResultsList — only "on" while glow is active.
   const liveHighlights = glowActive ? aiHighlights : { industries: [], country: undefined };
 
-  function run() {
+  function run(explicitQuery?: string) {
     cancelRef.current?.();
+    const q = state.query.trim();
+    if (!q) return;
     const mode = 'auto';
     dispatch({ type: 'START' });
     const filters = filtersToBackend(state.filters);
 
     const cancel = streamSearch(
-      { query: state.query, mode, size: 20, page: 1, filters },
+      { query: q, mode, size: 20, page: 1, filters },
       {
         onEvent: (event) => {
           dispatch({ type: 'RAW_SSE', event });

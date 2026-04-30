@@ -35,7 +35,7 @@ export default async function SolutionPage({
 
   return (
     <article>
-      {/* Compact header — title + tech stack only; full description lives in the Overview tab */}
+      {/* Compact header — category + title only; full description lives in the Overview tab */}
       <section>
         <div className={cn('h-0.5 bg-gradient-to-r', accent)} />
         <div className="container-tight pt-6 pb-3">
@@ -43,16 +43,6 @@ export default async function SolutionPage({
             {sol.meta.category}
           </p>
           <h1 className="mt-1 text-2xl font-semibold leading-tight">{sol.meta.title}</h1>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {sol.meta.stack.map((t) => (
-              <span
-                key={t}
-                className="rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
         </div>
       </section>
 
