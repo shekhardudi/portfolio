@@ -23,15 +23,25 @@ import {
   type StreamEvent,
 } from './client';
 
-// Inline example queries shown on the empty Search tab. Mirrors the original
-// Vite App's start-page suggestions so users can one-click into a real search.
-const START_QUERIES: string[] = [
-  'Apple Inc',
-  'IBM Inc',
-  'Google',
-  'tech companies in California',
-  'find me companies that announced fund raising in last year in Australia',
-  'give me more information about Infosys',
+// Inline example queries shown on the empty Search tab, grouped by search mode.
+const CATEGORIZED_QUERIES = [
+  {
+    label: 'BM25 — Keyword',
+    queries: ['Apple', 'IBM Inc', 'Google'],
+  },
+  {
+    label: 'Semantic — Conceptual',
+    queries: ['tech companies in california', 'biotech companies in boston'],
+  },
+  {
+    label: 'Agentic — Live Research',
+    queries: [
+      'find me companies that announced fund raising in last year in australia'],
+  },
+  {
+    label: 'Agentic — Live Research +linkedin',
+    queries: ['give me more information about infosys'],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -245,8 +255,8 @@ export default function Demo() {
           <div className="md:hidden">
             <Drawer open={filtersOpen} onOpenChange={setFiltersOpen}>
               <DrawerTrigger asChild>
-                <button className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1 text-xs">
-                  <Filter className="h-3 w-3" /> Filters
+                <button className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1 text-sm font-medium text-foreground/90">
+                  <Filter className="h-3.5 w-3.5" /> Filters
                 </button>
               </DrawerTrigger>
               <DrawerContent>
@@ -319,19 +329,28 @@ export default function Demo() {
                       Search using natural language — try one of these:
                     </span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {START_QUERIES.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => {
-                          dispatch({ type: 'SET_QUERY', q });
-                          requestAnimationFrame(() => run());
-                        }}
-                        className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground/85 transition hover:border-foreground/40 hover:bg-muted/60"
-                      >
-                        {q}
-                      </button>
+                  <div className="mt-4 space-y-2">
+                    {CATEGORIZED_QUERIES.map(({ label, queries }) => (
+                      <div key={label} className="grid grid-cols-[10rem_1fr] items-start gap-x-3 gap-y-1">
+                        <span className="pt-1 text-xs font-medium text-foreground/50 text-right">
+                          {label}
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {queries.map((q) => (
+                            <button
+                              key={q}
+                              type="button"
+                              onClick={() => {
+                                dispatch({ type: 'SET_QUERY', q });
+                                requestAnimationFrame(() => run());
+                              }}
+                              className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground/85 transition hover:border-foreground/40 hover:bg-muted/60"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -345,11 +364,11 @@ export default function Demo() {
       <TabsContent value="raw">
         <div className="demo-prose space-y-3">
           <div className="rounded-xl border border-border bg-muted/40 p-3">
-            <div className="text-sm font-semibold text-foreground/85">
+            <div className="text-sm font-semibold text-foreground/95">
               POST /api/search/intelligent/stream
             </div>
-            <div className="mt-1 text-xs text-foreground/65">Request body</div>
-            <pre className="mt-1 overflow-auto rounded bg-background p-3 text-xs leading-relaxed">
+            <div className="mt-1 text-sm text-foreground/85">Request body</div>
+            <pre className="mt-1 overflow-auto rounded bg-background p-3 text-sm leading-relaxed text-foreground/95">
 {JSON.stringify(
   {
     query: state.query,
@@ -367,10 +386,10 @@ export default function Demo() {
 
           {state.rawSse.length > 0 && (
             <details className="rounded-xl border border-border bg-muted/40 p-3" open>
-              <summary className="cursor-pointer text-sm font-semibold text-foreground/85">
+              <summary className="cursor-pointer text-sm font-semibold text-foreground/95">
                 SSE events ({state.rawSse.length})
               </summary>
-              <pre className="mt-2 max-h-72 overflow-auto rounded bg-background p-3 text-xs leading-relaxed">
+              <pre className="mt-2 max-h-72 overflow-auto rounded bg-background p-3 text-sm leading-relaxed text-foreground/95">
                 {state.rawSse.map((e, i) => `${i}: ${JSON.stringify(e)}\n`).join('')}
               </pre>
             </details>
@@ -378,16 +397,16 @@ export default function Demo() {
 
           <div className="rounded-xl border border-border bg-muted/40 p-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-foreground/85">
+              <div className="text-sm font-semibold text-foreground/95">
                 Response body
               </div>
               {state.response?.duration_ms != null && (
-                <span className="rounded-md border border-border px-2 py-0.5 text-xs text-foreground/70">
+                <span className="rounded-md border border-border px-2 py-0.5 text-sm text-foreground/85">
                   {state.response.duration_ms}ms · {state.response.hits.length} hits
                 </span>
               )}
             </div>
-            <pre className="mt-2 max-h-[520px] overflow-auto rounded bg-background p-3 text-xs leading-relaxed">
+            <pre className="mt-2 max-h-[520px] overflow-auto rounded bg-background p-3 text-sm leading-relaxed text-foreground/95">
               {state.response?.raw
                 ? JSON.stringify(state.response.raw, null, 2)
                 : state.response

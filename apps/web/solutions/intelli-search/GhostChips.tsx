@@ -39,12 +39,12 @@ export default function GhostChips({ chips }: { chips: IntentChip[] }) {
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.18 }}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]',
+              'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs',
               CHIP_COLOR[c.type],
             )}
           >
             <span>{CHIP_ICON[c.type]}</span>
-            <span className="opacity-70">{CHIP_TYPE_LABEL[c.type]}:</span>
+            <span className="opacity-85">{CHIP_TYPE_LABEL[c.type]}:</span>
             <span className="font-medium">{c.label}</span>
           </motion.span>
         ))}

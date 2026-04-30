@@ -122,7 +122,7 @@ export default function IntelliSearchBar({
         <button
           type="submit"
           disabled={busy || !query.trim()}
-          className="inline-flex h-11 items-center gap-2 rounded-lg bg-foreground px-5 text-sm font-medium text-background disabled:opacity-50"
+          className="inline-flex h-11 items-center gap-2 rounded-lg bg-foreground px-5 text-sm font-semibold text-background disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
         </button>

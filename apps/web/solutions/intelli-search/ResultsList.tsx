@@ -96,7 +96,7 @@ export default function ResultsList({
             <span className="font-medium">{cfg.banner(searchQuery, total)}</span>
           </span>
           {reasoning && (
-            <span className="text-xs italic text-foreground/75">
+            <span className="text-sm italic text-foreground/85">
               {reasoning}
             </span>
           )}
@@ -119,13 +119,13 @@ export default function ResultsList({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-foreground/70">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-foreground/85">
         <span>
           Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
           {response.duration_ms ? ` · ${response.duration_ms}ms` : ''}
         </span>
         <div className="flex items-center gap-1">
-          <span className="mr-1 text-foreground/60">Sort</span>
+          <span className="mr-1 text-foreground/80">Sort</span>
           {(['relevance', 'name', 'year'] as SortKey[]).map((k) => (
             <button
               key={k}
@@ -135,10 +135,10 @@ export default function ResultsList({
                 setPage(1);
               }}
               className={cn(
-                'rounded-full border px-2 py-0.5 transition',
+                'rounded-full border px-2 py-0.5 text-sm transition',
                 sort === k
                   ? 'border-foreground bg-foreground text-background'
-                  : 'border-border text-foreground/75 hover:text-foreground',
+                  : 'border-border text-foreground/90 hover:text-foreground',
               )}
             >
               {k === 'relevance' ? 'Relevance' : k === 'name' ? 'Name' : 'Year founded'}
@@ -154,15 +154,15 @@ export default function ResultsList({
       </ul>
 
       {pages > 1 && (
-        <div className="flex items-center justify-center gap-2 text-xs">
+        <div className="flex items-center justify-center gap-2 text-sm text-foreground/90">
           <button
             disabled={page === 1}
             onClick={() => setPage((p) => p - 1)}
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 disabled:opacity-50"
           >
-            <ChevronLeft className="h-3 w-3" /> prev
+            <ChevronLeft className="h-3.5 w-3.5" /> prev
           </button>
-          <span className="text-foreground/70">
+          <span className="text-foreground/85">
             page {page} / {pages}
           </span>
           <button
@@ -170,7 +170,7 @@ export default function ResultsList({
             onClick={() => setPage((p) => p + 1)}
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 disabled:opacity-50"
           >
-            next <ChevronRight className="h-3 w-3" />
+            next <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
@@ -214,7 +214,7 @@ function ResultRow({ hit }: { hit: SearchHit }) {
                 href={`https://${hit.domain}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="truncate text-xs text-foreground/60 hover:text-foreground/85 hover:underline"
+                className="truncate text-sm text-foreground/75 hover:text-foreground hover:underline"
               >
                 {hit.domain}
               </a>
@@ -266,7 +266,7 @@ function ResultRow({ hit }: { hit: SearchHit }) {
           </p>
         )}
         {(hit.search_method || hit.ranking_source) && (
-          <div className="mt-1.5 text-[10px] uppercase tracking-wider text-foreground/55">
+          <div className="mt-1.5 text-xs uppercase tracking-wider text-foreground/75">
             {[hit.search_method, hit.ranking_source].filter(Boolean).join(' / ')}
           </div>
         )}
@@ -282,8 +282,8 @@ function ResultRow({ hit }: { hit: SearchHit }) {
 
 function Pill({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground/85">
-      {icon && <span className="text-foreground/60">{icon}</span>}
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-sm text-foreground/90">
+      {icon && <span className="text-foreground/75">{icon}</span>}
       {children}
     </span>
   );
@@ -318,10 +318,10 @@ function ProfileBlock({ profile }: { profile: LinkedinProfile }) {
   const specs = profile.specialties ?? [];
   return (
     <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-sm">
-      <div className="text-xs font-semibold uppercase tracking-wider text-foreground/70">
+      <div className="text-sm font-semibold uppercase tracking-wider text-foreground/85">
         Profile
       </div>
-      <div className="mt-2 space-y-1.5 text-sm text-foreground/85">
+      <div className="mt-2 space-y-1.5 text-sm text-foreground/90">
         {profile.description && (
           <p className="leading-relaxed">{profile.description}</p>
         )}
@@ -358,11 +358,11 @@ function ProfileBlock({ profile }: { profile: LinkedinProfile }) {
         </div>
         {specs.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <Tag className="h-3.5 w-3.5 text-foreground/65" />
+            <Tag className="h-3.5 w-3.5 text-foreground/75" />
             {specs.map((s) => (
               <span
                 key={s}
-                className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground/80"
+                className="rounded-md border border-border bg-background px-1.5 py-0.5 text-sm text-foreground/90"
               >
                 {s}
               </span>
@@ -370,7 +370,7 @@ function ProfileBlock({ profile }: { profile: LinkedinProfile }) {
           </div>
         )}
         {profile.recent_updates && (
-          <p className="text-xs italic text-foreground/70">{profile.recent_updates}</p>
+          <p className="text-sm italic text-foreground/85">{profile.recent_updates}</p>
         )}
       </div>
     </div>
@@ -388,9 +388,9 @@ function ProfileMeta({
 }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="text-foreground/65">{icon}</span>
-      <span className="text-xs uppercase tracking-wider text-foreground/65">{label}:</span>
-      <span className="text-sm text-foreground/90">{value}</span>
+      <span className="text-foreground/75">{icon}</span>
+      <span className="text-sm uppercase tracking-wider text-foreground/80">{label}:</span>
+      <span className="text-sm text-foreground/95">{value}</span>
     </div>
   );
 }
@@ -412,24 +412,24 @@ function RecentActivity({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
-      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-200">
+      <div className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-amber-100">
         <Newspaper className="h-3.5 w-3.5" /> Recent activity
       </div>
       {headline && (
-        <div className="mt-1 text-sm font-medium text-foreground/90">{headline}</div>
+        <div className="mt-1 text-sm font-medium text-foreground/95">{headline}</div>
       )}
       {summary && (
-        <p className="mt-1 text-sm text-foreground/80">{summary}</p>
+        <p className="mt-1 text-sm text-foreground/90">{summary}</p>
       )}
       {publishedAt && (
-        <div className="mt-1 text-xs text-foreground/65">{publishedAt}</div>
+        <div className="mt-1 text-sm text-foreground/80">{publishedAt}</div>
       )}
       {sourceUrl && (
         <a
           href={sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1.5 inline-flex items-center gap-1 text-sm text-amber-200 hover:underline"
+          className="mt-1.5 inline-flex items-center gap-1 text-sm text-amber-100 hover:underline"
         >
           Read full article <ExternalLink className="h-3 w-3" />
         </a>

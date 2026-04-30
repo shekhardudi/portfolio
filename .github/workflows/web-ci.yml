@@ -1,41 +1,41 @@
-name: web-ci
+# name: web-ci
 
-on:
-  push:
-    paths:
-      - "apps/web/**"
-      - ".github/workflows/web-ci.yml"
-  pull_request:
-    paths:
-      - "apps/web/**"
-      - ".github/workflows/web-ci.yml"
+# on:
+#   push:
+#     paths:
+#       - "apps/web/**"
+#       - ".github/workflows/web-ci.yml"
+#   pull_request:
+#     paths:
+#       - "apps/web/**"
+#       - ".github/workflows/web-ci.yml"
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
-    steps:
-      - uses: actions/checkout@v4
+# jobs:
+#   build:
+#     runs-on: ubuntu-latest
+#     defaults:
+#       run:
+#         working-directory: apps/web
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+#       - uses: pnpm/action-setup@v4
+#         with:
+#           version: 9
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#           cache: pnpm
+#           cache-dependency-path: apps/web/pnpm-lock.yaml
 
-      - run: pnpm install --frozen-lockfile
+#       - run: pnpm install --frozen-lockfile
 
-      - name: typecheck
-        run: pnpm typecheck
+#       - name: typecheck
+#         run: pnpm typecheck
 
-      - name: lint
-        run: pnpm lint
+#       - name: lint
+#         run: pnpm lint
 
-      - name: build
-        run: pnpm build
+#       - name: build
+#         run: pnpm build

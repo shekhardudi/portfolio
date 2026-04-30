@@ -42,8 +42,8 @@ function ClassifyingPanel() {
       <div className="flex items-center gap-3">
         <Orbit />
         <div>
-          <h4 className="text-sm font-semibold">🔍 Analyzing your query</h4>
-          <p className="text-xs text-muted-foreground">Classifying intent with AI…</p>
+          <h4 className="text-sm font-semibold text-foreground/95">🔍 Analyzing your query</h4>
+          <p className="text-sm text-foreground/85">Classifying intent with AI…</p>
         </div>
       </div>
     </div>
@@ -80,8 +80,8 @@ function SemanticPanel({
       <div className="flex items-center gap-3">
         <Orbit />
         <div>
-          <h4 className="text-sm font-semibold">✨ AI Searching</h4>
-          <p className="text-xs text-muted-foreground">
+          <h4 className="text-sm font-semibold text-foreground/95">✨ AI Searching</h4>
+          <p className="text-sm text-foreground/85">
             {message || 'Intelligently processing your query…'}
           </p>
         </div>
@@ -96,8 +96,8 @@ function SemanticPanel({
               <span
                 className={cn(
                   state === 'pending'
-                    ? 'text-muted-foreground'
-                    : 'text-foreground',
+                    ? 'text-foreground/75'
+                    : 'text-foreground/95',
                 )}
               >
                 {s.label}
@@ -135,8 +135,8 @@ function AgenticPanel({
       <div className="flex items-center gap-3">
         <Orbit />
         <div className="flex-1">
-          <h4 className="text-sm font-semibold">🤖 AI Agent Researching</h4>
-          <p className="text-xs text-muted-foreground">
+          <h4 className="text-sm font-semibold text-foreground/95">🤖 AI Agent Researching</h4>
+          <p className="text-sm text-foreground/85">
             {message || 'Querying external data sources…'}
           </p>
         </div>
@@ -158,7 +158,7 @@ function AgenticPanel({
             return (
               <li key={i} className="flex items-start gap-2">
                 <StepIcon state={isDone ? 'done' : 'active'} />
-                <span className={cn(isDone ? 'text-foreground' : 'text-muted-foreground')}>
+                <span className={cn(isDone ? 'text-foreground/95' : 'text-foreground/80')}>
                   {msg}
                 </span>
               </li>

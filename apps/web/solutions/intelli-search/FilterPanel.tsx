@@ -186,9 +186,9 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
             <button
               type="button"
               onClick={clearAi}
-              className="inline-flex items-center gap-1 text-xs text-foreground/75 hover:text-foreground"
+              className="inline-flex items-center gap-1 text-sm font-medium text-foreground/90 hover:text-foreground"
             >
-              <Sparkles className="h-3 w-3" /> Clear AI
+              <Sparkles className="h-3.5 w-3.5" /> Clear AI
             </button>
           )}
           <button
@@ -215,10 +215,10 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
                   type="button"
                   onClick={() => toggleIndustry(name)}
                   className={cn(
-                    'rounded-full border px-2.5 py-0.5 text-xs transition',
+                    'rounded-full border px-2.5 py-0.5 text-sm transition',
                     active
                       ? 'border-foreground bg-foreground text-background'
-                      : 'border-border text-foreground/75 hover:text-foreground',
+                      : 'border-border text-foreground/90 hover:text-foreground',
                     glow && !active && 'animate-ai-pulse border-violet-500/60 bg-violet-500/15 text-violet-100',
                   )}
                 >
@@ -228,14 +228,14 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
             })}
           </div>
         ) : (
-          <div className="text-xs text-foreground/65">No industry facets available.</div>
+          <div className="text-sm text-foreground/85">No industry facets available.</div>
         )}
         {filters.industries.length > 0 && (
           <button
             onClick={() => onChange({ ...filters, industries: [] })}
-            className="mt-2 inline-flex items-center gap-1 text-xs text-foreground/75 hover:text-foreground"
+            className="mt-2 inline-flex items-center gap-1 text-sm text-foreground/90 hover:text-foreground"
           >
-            <X className="h-3 w-3" /> clear ({filters.industries.length})
+            <X className="h-3.5 w-3.5" /> clear ({filters.industries.length})
           </button>
         )}
       </Section>
@@ -253,10 +253,10 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
                   onChange({ ...filters, size_range: active ? undefined : value })
                 }
                 className={cn(
-                  'rounded-full border px-2.5 py-0.5 text-xs transition',
+                  'rounded-full border px-2.5 py-0.5 text-sm transition',
                   active
                     ? 'border-foreground bg-foreground text-background'
-                    : 'border-border text-foreground/75 hover:text-foreground',
+                    : 'border-border text-foreground/90 hover:text-foreground',
                 )}
               >
                 {label}
@@ -314,7 +314,7 @@ export default function FilterPanel({ filters, onChange, aiHighlights, className
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/80">
+      <div className="mb-2 text-sm font-semibold uppercase tracking-wider text-foreground/90">
         {label}
       </div>
       {children}
