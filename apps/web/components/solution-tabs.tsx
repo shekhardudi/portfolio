@@ -26,8 +26,10 @@ export function SolutionTabs({ solution }: { solution: SolutionPlugin }) {
             key={t}
             value={t}
             className={cn(
-              'rounded-t-md px-4 py-2 text-sm font-medium text-muted-foreground transition',
-              'data-[state=active]:bg-muted data-[state=active]:text-foreground',
+              '-mb-px rounded-t-md border-b-2 border-transparent px-4 py-2 text-sm font-medium text-foreground/70 transition',
+              'hover:text-foreground',
+              'data-[state=active]:border-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             )}
           >
             {TAB_LABELS[t] ?? t}

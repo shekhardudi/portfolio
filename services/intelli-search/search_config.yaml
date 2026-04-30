@@ -43,21 +43,38 @@ embedding:
   query_prefix: "Represent this sentence for searching relevant passages: "
 
 agentic:
-  # LLM model used by the flex ReAct agent (complex / named-company queries).
-  # Any OpenAI chat model that supports tool/function calling.
-  # gpt-4o-mini is sufficient for ReAct reasoning decisions and is 5-10x cheaper.
-  model: "gpt-4o-mini"
-  # Maximum agent iterations before giving up (reduced — 3 covers the full flow)
-  agent_max_iterations: 3
-  # LLM model used for event extraction (both fast pipeline and flex agent).
-  # gpt-4o-mini handles the constrained json_object format well and is fast.
-  extraction_model: "gpt-4o-mini"
+  # Web-search backend for the agentic pipeline.
+  #   "tavily"  — Tavily Search API (default, requires TAVILY_API_KEY)
+  #   "serpapi" — SerpAPI Google AI Mode (requires SERPAPI_API_KEY)
+  # If "serpapi" is selected without a SERPAPI_API_KEY, the pipeline logs a
+  # warning at startup and falls back to Tavily. LinkedIn page extraction
+  # always uses Tavily's /extract endpoint regardless of this setting.
+  web_search:
+    provider: "serpapi"
+
+  # SerpAPI provider knobs (only used when web_search.provider == "serpapi").
+  serpapi:
+    # Slot 0 is reserved for the AI Mode summary, so 12 keeps ~11 citations.
+    max_results: 12
+    timeout_s: 10
+    # Geolocation / language for the Google AI Mode query.
+    gl: "us"
+    hl: "en"
+    # Optional location string (e.g. "Austin, Texas, United States"). null = unset.
+    location: null
+
+  # LLM model used for event extraction (deterministic pipeline).
+  # gpt-4.1-mini: same price tier as gpt-4o-mini, ~30% faster output throughput
+  # on structured JSON; handles json_object format reliably.
+  extraction_model: "gpt-4.1-mini"
   # Maximum company names the LLM may return per extraction call
   max_company_names: 25
   # Maximum company results to return from the extraction prompt
-  max_company_results: 20
-  # Token budget for the LLM event-extraction call
-  llm_max_tokens: 2048
+  max_company_results: 12
+  # Token budget for the LLM event-extraction call.
+  # ~50-70 tokens per event; 600 covers ~10 events comfortably and forces
+  # faster termination on edge cases.
+  llm_max_tokens: 1200
   # OpenSearch candidates to fetch per resolved company name
   resolve_per_name: 5
   # Minimum OpenSearch score to accept a resolved company (avoids false matches)
@@ -77,16 +94,26 @@ agentic:
   # Redis TTL (seconds) for cached Tavily results in the fast pipeline.
   # News events don't change second-by-second — 5 minutes is safe for most queries.
   tavily_cache_ttl_s: 300
-  # Character limit per Tavily result fed to the extraction LLM.
-  # Reducing from 1200 → 800 cuts extraction tokens and latency with minimal recall loss.
+  # Character limit per result fed to the extraction LLM.
+  # Used for Tavily results and as fallback when no AI summary is present.
   content_chars: 800
-  # Hard wall-clock timeout (seconds) for the entire flex agent run.
-  # If the agent exceeds this, results collected so far are returned.
-  agent_hard_timeout_s: 90
-  # LLM temperature for the agent's reasoning model (0.0–1.0).
-  # Lower values reduce hallucination in structured extraction tasks.
-  llm_temperature: 0.1
-  # When true, send the user's original natural-language query to Tavily
-  # as the primary search (agent's constructed query becomes the retry).
-  # When false, use the agent's keyword query first (original query is retry).
-  tavily_prefer_original_query: true
+  # Character limit applied ONLY to the pinned "Google AI Mode summary" slot
+  # (SerpAPI). The AI Mode body is dense and authoritative — give it room.
+  summary_chars: 6000
+  # Character limit per non-summary citation when an AI summary is present.
+  # Citations are short fragments — keep this tight to control token usage.
+  citation_chars: 400
+
+  # LinkedIn enrichment branch (used when intent.named_companies is non-empty).
+  linkedin:
+    # Cap on number of named companies enriched in parallel per request.
+    max_companies: 3
+    # Max characters of LinkedIn page content fed to the extraction LLM.
+    content_chars: 3000
+    # Token budget for the LinkedIn extraction LLM call.
+    llm_max_tokens: 600
+
+  # Semantic prefetch fallback (when Tavily returns nothing).
+  semantic_prefetch:
+    k: 50
+    size: 10

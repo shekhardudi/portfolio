@@ -804,7 +804,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Intelli-Search data ingestion pipeline")
     parser.add_argument(
-        "--csv", default=os.getenv("INGEST_CSV_S3_URI", "companies_sorted.csv"),
+        "--csv", default=os.getenv("INGEST_CSV_S3_URI", os.path.join(os.path.dirname(__file__), "companies_balanced.csv")),
         help="Path or s3://bucket/key URI for the source CSV file",
     )
     parser.add_argument(

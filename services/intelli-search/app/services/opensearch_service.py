@@ -2,6 +2,7 @@
 OpenSearch client and integration service.
 Handles all direct interactions with OpenSearch.
 """
+import asyncio
 import structlog
 from functools import lru_cache
 from typing import Dict, List, Any, Optional
@@ -163,6 +164,34 @@ class OpenSearchService:
         except Exception as e:
             logger.error("search_failed", error=str(e), query=query or body)
             raise
+
+    async def asearch(
+        self,
+        index: str,
+        query: Optional[Dict[str, Any]] = None,
+        size: int = 20,
+        from_: int = 0,
+        body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Async wrapper around :meth:`search` — runs the blocking call in a thread."""
+        return await asyncio.to_thread(
+            self.search,
+            index=index,
+            query=query,
+            size=size,
+            from_=from_,
+            body=body,
+        )
+
+    async def amsearch(self, body: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Async multi-search via the OpenSearch ``_msearch`` endpoint.
+
+        ``body`` is a list of alternating header/query dicts in standard
+        msearch format.  The blocking call is offloaded to a worker thread
+        so it never stalls the event loop.
+        """
+        return await asyncio.to_thread(self.client.msearch, body=body)
+
     
     def search_with_aggs(
         self,
@@ -298,7 +327,7 @@ class OpenSearchService:
         try:
             response = self.client.transport.perform_request(
                 "GET",
-                f"/_plugins/_knn/warmup/{index}?timeout=300s",
+                f"/_plugins/_knn/warmup/{index}",
             )
             logger.info(
                 "knn_warmup_completed",
@@ -309,6 +338,50 @@ class OpenSearchService:
         except Exception as e:
             logger.warning("knn_warmup_failed", index=index, error=str(e))
             return False
+
+    def aggregate_terms(
+        self,
+        index: str,
+        field: str,
+        size: int = 1000,
+        filters: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Run a terms aggregation on ``field`` and return [{key, count}].
+
+        Optional ``filters`` is a list of OpenSearch query clauses (e.g.
+        ``[{"term": {"country": "australia"}}]``) ANDed via a bool/must.
+        Empty / null buckets are filtered out.
+        """
+        body: Dict[str, Any] = {
+            "size": 0,
+            "aggs": {
+                "values": {
+                    "terms": {
+                        "field": field,
+                        "size": size,
+                        "order": {"_key": "asc"},
+                    }
+                }
+            },
+        }
+        if filters:
+            body["query"] = {"bool": {"must": filters}}
+        try:
+            resp = self.client.search(index=index, body=body)
+            buckets = resp.get("aggregations", {}).get("values", {}).get("buckets", [])
+            return [
+                {"value": b["key"], "count": b["doc_count"]}
+                for b in buckets
+                if b.get("key") not in (None, "")
+            ]
+        except Exception as e:
+            logger.error(
+                "aggregate_terms_failed",
+                index=index,
+                field=field,
+                error=str(e),
+            )
+            return []
 
     def close(self):
         """Close the OpenSearch connection"""

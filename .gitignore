@@ -77,3 +77,4 @@ services/*/output_markdown/
 services/*/outputs/
 services/intelli-search/data-pipeline/companies_sorted.csv
 
+sync.sh

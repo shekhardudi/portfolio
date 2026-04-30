@@ -3,6 +3,7 @@ Search Orchestrator - Main coordinator for the intelligent search pipeline.
 Routes queries through intent classification and strategically executes searches.
 Manages observability, tracing, and hybrid result merging.
 """
+import asyncio
 import json
 import re
 import structlog
@@ -17,7 +18,6 @@ from app.services.intent_classifier import get_intent_classifier, SearchIntent, 
 from app.services.embedding_service import get_embedding_service
 from app.services.opensearch_service import get_opensearch_service
 from app.services.cache_service import get_cache_service
-from app.services.tool_service import ToolService
 from app.services.search_strategies import (
     SearchContext, SearchResult, RegularSearchStrategy,
     SemanticSearchStrategy, AgenticSearchStrategy
@@ -120,30 +120,23 @@ class SearchOrchestrator:
         # Initialize search strategies
         self.regular_strategy = RegularSearchStrategy(self.opensearch)
         self.semantic_strategy = SemanticSearchStrategy(self.opensearch, self.embeddings)
-        _agentic_cfg = get_search_config().get("agentic", {})
-        tool_service = ToolService(
-            opensearch_service=self.opensearch,
-            openai_api_key=self.settings.OPENAI_API_KEY,
-            model=_agentic_cfg.get("model", "gpt-4o-mini"),
-            tavily_key=get_settings().TAVILY_API_KEY,
-            max_iterations=int(_agentic_cfg.get("agent_max_iterations", 3)),
-        )
-        # Fast deterministic pipeline — handles ~85% of agentic queries
-        # with 3-6× lower latency than the ReAct agent.
+        # Single deterministic async pipeline — handles all agentic queries
+        # (event extraction + optional per-company LinkedIn enrichment).
         pipeline = AgenticPipeline(
             opensearch_service=self.opensearch,
             openai_api_key=self.settings.OPENAI_API_KEY,
             tavily_key=get_settings().TAVILY_API_KEY,
+            serpapi_key=get_settings().SERPAPI_API_KEY,
             cache_service=self.cache,
             embedding_service=self.embeddings,
         )
         self.agentic_strategy = AgenticSearchStrategy(
-            self.opensearch, tool_service, pipeline=pipeline
+            self.opensearch, pipeline=pipeline
         )
         
         logger.info("search_orchestrator_initialized")
     
-    def search(
+    async def search(
         self,
         query: str,
         limit: int = 20,
@@ -180,12 +173,12 @@ class SearchOrchestrator:
             },
         )
         if self.settings.ENABLE_CACHING:
-            _cached = self.cache.get(_cache_key)
+            _cached = await asyncio.to_thread(self.cache.get, _cache_key)
             if _cached:
                 try:
                     cached_resp = IntelligentSearchResponse.model_validate_json(_cached)
                     cached_resp.metadata["cached"] = True
-                    self.cache.track_query(query)
+                    await asyncio.to_thread(self.cache.track_query, query)
                     logger.info("intelligent_search_cache_hit", query=query[:100])
                     return cached_resp
                 except Exception as _cache_err:
@@ -218,7 +211,7 @@ class SearchOrchestrator:
             classified_by_regex = intent is not None
             if intent is None:
                 try:
-                    intent = self.classifier.classify(query, trace_id)
+                    intent = await self.classifier.aclassify(query, trace_id)
                 except Exception as clf_err:
                     logger.warning(
                         "classification_failed_fallback_to_semantic",
@@ -285,7 +278,7 @@ class SearchOrchestrator:
             )
             
             # Step 3: Select and execute strategy
-            results, search_metadata = self._execute_strategy(
+            results, search_metadata = await self._execute_strategy(
                 intent, context, progress_callback=progress_callback
             )
             
@@ -341,8 +334,8 @@ class SearchOrchestrator:
             # skip bm25_fallback — degraded results should not be served later)
             is_fallback = search_metadata.get("mode") == "bm25_fallback"
             if self.settings.ENABLE_CACHING and intent.category != SearchIntent.AGENTIC and not is_fallback:
-                self.cache.set(_cache_key, response.model_dump_json())
-            self.cache.track_query(query)
+                await asyncio.to_thread(self.cache.set, _cache_key, response.model_dump_json())
+            await asyncio.to_thread(self.cache.track_query, query)
 
             return response
         
@@ -480,7 +473,7 @@ class SearchOrchestrator:
         )
         return merged
 
-    def _execute_strategy(
+    async def _execute_strategy(
         self,
         intent: QueryIntent,
         context: SearchContext,
@@ -506,18 +499,18 @@ class SearchOrchestrator:
             # Pass progress_callback to agentic and semantic strategies
             # so they can emit SSE progress events for real-time UI updates.
             if intent.category == SearchIntent.AGENTIC:
-                results, metadata = strategy.search(
+                results, metadata = await strategy.search(
                     context,
                     intent=intent,
                     progress_callback=progress_callback,
                 )
             elif intent.category == SearchIntent.SEMANTIC and progress_callback is not None:
-                results, metadata = strategy.search(
+                results, metadata = await strategy.search(
                     context,
                     progress_callback=progress_callback,
                 )
             else:
-                results, metadata = strategy.search(context)
+                results, metadata = await strategy.search(context)
             return results, metadata
         except Exception as e:
             # Fallback: try semantic search
@@ -527,7 +520,7 @@ class SearchOrchestrator:
                 failed_strategy=strategy.get_strategy_type(),
                 error=str(e)
             )
-            results, metadata = self.semantic_strategy.search(context)
+            results, metadata = await self.semantic_strategy.search(context)
             metadata["fallback"] = True
             return results, metadata
     
@@ -557,6 +550,9 @@ class SearchOrchestrator:
 
         if result.linkedin_profile:
             formatted["linkedin_profile"] = result.linkedin_profile
+
+        if result.linkedin_url:
+            formatted["linkedin_url"] = result.linkedin_url
 
         return formatted
     

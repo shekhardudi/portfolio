@@ -5,6 +5,7 @@ Handles environment variables and application settings.
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 import yaml
 
@@ -36,6 +37,13 @@ class Settings(BaseSettings):
 
     # Tavily Web Search (Optional — used by agentic search for real-time results)
     TAVILY_API_KEY: Optional[str] = None
+
+    # SerpAPI Google AI Mode (Optional — alternative web-search provider for agentic).
+    # Accepts either SERPAPI_API_KEY or SERP_API_KEY in the environment / .env.
+    SERPAPI_API_KEY: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SERPAPI_API_KEY", "SERP_API_KEY"),
+    )
 
     # Search Configuration
     SEARCH_TIMEOUT: int = 90  # seconds (agentic path with linkedin enrichment can take 60s+)

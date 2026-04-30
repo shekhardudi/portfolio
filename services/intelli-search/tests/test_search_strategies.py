@@ -8,7 +8,7 @@ Focuses on:
 - _rrf_merge ranking correctness.
 """
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from app.services.search_strategies import SearchContext
 
 
@@ -67,27 +67,27 @@ class TestRegularSearchStrategy:
     @pytest.fixture(autouse=True)
     def strategy(self):
         self._mock_os = MagicMock()
-        self._mock_os.search.return_value = _make_os_response([_make_hit("1", 1.0)])
+        self._mock_os.asearch = AsyncMock(return_value=_make_os_response([_make_hit("1", 1.0)]))
         from app.services.search_strategies import RegularSearchStrategy
         return RegularSearchStrategy(opensearch_service=self._mock_os)
 
-    def test_search_uses_configured_index(self, strategy):
+    async def test_search_uses_configured_index(self, strategy):
         from app.config import get_settings
-        strategy.search(_ctx("Apple Inc", limit=5))
-        call_kwargs = self._mock_os.search.call_args
+        await strategy.search(_ctx("Apple Inc", limit=5))
+        call_kwargs = self._mock_os.asearch.call_args
         assert call_kwargs is not None
         # index argument should match settings — check keyword arg
         called_index = call_kwargs[1].get("index")
         assert called_index == get_settings().OPENSEARCH_INDEX_NAME
 
-    def test_search_returns_list_of_results(self, strategy):
-        results, _ = strategy.search(_ctx("Apple Inc", limit=5))
+    async def test_search_returns_list_of_results(self, strategy):
+        results, _ = await strategy.search(_ctx("Apple Inc", limit=5))
         assert isinstance(results, list)
 
-    def test_search_with_filters(self, strategy):
+    async def test_search_with_filters(self, strategy):
         ctx = _ctx("Apple Inc", limit=5)
         ctx.filters = {"country": "US"}
-        results, _ = strategy.search(ctx)
+        results, _ = await strategy.search(ctx)
         assert isinstance(results, list)
 
 
@@ -193,9 +193,10 @@ class TestSemanticSearchStrategyMode:
         with patch("app.services.search_strategies.get_search_config") as mock_cfg:
             cfg = mock_cfg.return_value
             cfg.get.side_effect = lambda k, d=None: {"semantic": {"mode": "knn"}}.get(k, d)
-            with patch.object(strategy, "_search_knn", return_value=([], {})) as knn_mock, \
-                 patch.object(strategy, "_search_rrf", return_value=([], {})) as rrf_mock:
-                strategy.search(_ctx("clean tech"))
+            with patch.object(strategy, "_search_knn", new=AsyncMock(return_value=([], {}))) as knn_mock, \
+                 patch.object(strategy, "_search_rrf", new=AsyncMock(return_value=([], {}))) as rrf_mock:
+                import asyncio
+                asyncio.run(strategy.search(_ctx("clean tech")))
                 knn_mock.assert_called_once()
                 rrf_mock.assert_not_called()
 
@@ -203,9 +204,10 @@ class TestSemanticSearchStrategyMode:
         with patch("app.services.search_strategies.get_search_config") as mock_cfg:
             cfg = mock_cfg.return_value
             cfg.get.side_effect = lambda k, d=None: {"semantic": {"mode": "rrf"}}.get(k, d)
-            with patch.object(strategy, "_search_knn", return_value=([], {})) as knn_mock, \
-                 patch.object(strategy, "_search_rrf", return_value=([], {})) as rrf_mock:
-                strategy.search(_ctx("clean tech"))
+            with patch.object(strategy, "_search_knn", new=AsyncMock(return_value=([], {}))) as knn_mock, \
+                 patch.object(strategy, "_search_rrf", new=AsyncMock(return_value=([], {}))) as rrf_mock:
+                import asyncio
+                asyncio.run(strategy.search(_ctx("clean tech")))
                 rrf_mock.assert_called_once()
                 knn_mock.assert_not_called()
 
@@ -219,8 +221,8 @@ class TestAgenticSearchStrategyDocsToResults:
     def strategy(self):
         from app.services.search_strategies import AgenticSearchStrategy
         mock_os = MagicMock()
-        mock_tool = MagicMock()
-        return AgenticSearchStrategy(opensearch_service=mock_os, tool_service=mock_tool)
+        mock_pipeline = MagicMock()
+        return AgenticSearchStrategy(opensearch_service=mock_os, pipeline=mock_pipeline)
 
     def test_docs_to_results_preserves_event_data(self, strategy):
         doc = {
@@ -259,3 +261,73 @@ class TestAgenticSearchStrategyDocsToResults:
         results = strategy._docs_to_results([doc], _ctx("linked"))
         assert results[0].linkedin_profile is not None
         assert results[0].linkedin_profile["followers"] == 1000
+
+
+# ---------------------------------------------------------------------------
+# AgenticSearchStrategy — _apply_post_filters
+# ---------------------------------------------------------------------------
+
+class TestAgenticPostFilters:
+    @pytest.fixture
+    def strategy(self):
+        from app.services.search_strategies import AgenticSearchStrategy
+        return AgenticSearchStrategy(
+            opensearch_service=MagicMock(),
+            pipeline=MagicMock(),
+        )
+
+    def _result(self, **overrides):
+        from app.services.search_strategies import SearchResult
+        base = dict(
+            company_id="c1",
+            company_name="Acme",
+            domain="acme.com",
+            industry="fintech",
+            country="US",
+            locality="San Francisco, CA",
+            relevance_score=1.0,
+            search_method="agentic",
+            ranking_source="tool",
+            matching_reason="test",
+        )
+        base.update(overrides)
+        return SearchResult(**base)
+
+    def test_no_filters_returns_input(self, strategy):
+        results = [self._result()]
+        out = strategy._apply_post_filters(results, _ctx("x"))
+        assert out == results
+
+    def test_country_filter_keeps_matching(self, strategy):
+        ctx = _ctx("x")
+        ctx.filters = {"location_country": "US"}
+        results = [self._result(country="US"), self._result(country="UK")]
+        out = strategy._apply_post_filters(results, ctx)
+        assert len(out) == 1
+        assert out[0].country == "US"
+
+    def test_industry_filter_keeps_matching(self, strategy):
+        ctx = _ctx("x")
+        ctx.filters = {"industries": ["fintech"]}
+        results = [
+            self._result(industry="fintech"),
+            self._result(industry="biotech"),
+        ]
+        out = strategy._apply_post_filters(results, ctx)
+        assert len(out) == 1
+
+    def test_filter_dropping_all_returns_empty_list(self, strategy):
+        """Current behaviour — locked here so Phase 5 can intentionally change it."""
+        ctx = _ctx("x")
+        ctx.filters = {"location_country": "DE"}
+        results = [self._result(country="US"), self._result(country="UK")]
+        out = strategy._apply_post_filters(results, ctx)
+        assert out == []
+
+    def test_empty_country_field_kept(self, strategy):
+        """Docs with no country data are not dropped by a country filter."""
+        ctx = _ctx("x")
+        ctx.filters = {"location_country": "US"}
+        results = [self._result(country="")]
+        out = strategy._apply_post_filters(results, ctx)
+        assert len(out) == 1

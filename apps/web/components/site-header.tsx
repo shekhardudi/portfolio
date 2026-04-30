@@ -10,14 +10,14 @@ export function SiteHeader() {
           <span>shekharlabs</span>
         </Link>
         <nav className="flex items-center gap-6 text-sm">
-          <Link className="text-muted-foreground hover:text-foreground" href="/#solutions">
+          <Link className="text-foreground/80 hover:text-foreground" href="/#solutions">
             Solutions
           </Link>
-          <Link className="text-muted-foreground hover:text-foreground" href="/about">
+          <Link className="text-foreground/80 hover:text-foreground" href="/about">
             About
           </Link>
           <Link
-            className="text-muted-foreground hover:text-foreground"
+            className="text-foreground/80 hover:text-foreground"
             href="https://github.com/shekhardudi"
             target="_blank"
             rel="noopener"

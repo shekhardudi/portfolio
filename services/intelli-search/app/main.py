@@ -17,7 +17,8 @@ import time
 import uuid
 from app.config import get_settings
 from app.api import routes
-
+from app.observability import configure_tracing, configure_metrics, configure_log_export
+from app.services.opensearch_service import get_opensearch_service
 # ---------------------------------------------------------------------------
 # Logging — configured at import time so every module sees JSON output.
 # ---------------------------------------------------------------------------
@@ -55,14 +56,14 @@ async def lifespan(app: FastAPI):
     )
 
     # Configure OTel tracing + metrics (non-fatal on any import/config error)
-    from app.observability import configure_tracing, configure_metrics, configure_log_export
+
     configure_tracing(settings.OTEL_SERVICE_NAME, settings.OTLP_ENDPOINT)
     configure_metrics(settings.OTEL_SERVICE_NAME, settings.OTLP_ENDPOINT)
     configure_log_export(settings.OTEL_SERVICE_NAME, settings.OTLP_ENDPOINT, settings.LOG_LEVEL)
     
     # Initialize and test OpenSearch connection
     try:
-        from app.services.opensearch_service import get_opensearch_service
+        
         opensearch = get_opensearch_service()
         is_healthy = opensearch.health_check()
         logger.info("opensearch_connection_test", healthy=is_healthy)

@@ -4,9 +4,7 @@ Uses the new orchestrator-based architecture with intent classification,
 strategy routing, and hybrid search.
 """
 import asyncio
-import functools
 import json
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Query, HTTPException, Header, Response
 from fastapi.responses import StreamingResponse
 from typing import Any, Callable, Dict, List, Optional
@@ -20,8 +18,6 @@ from app.observability import log_search_execution
 import time as _time
 from app.observability.metrics import get_search_metrics
 logger = structlog.get_logger(__name__)
-
-_THREAD_POOL = ThreadPoolExecutor(max_workers=128)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -79,6 +75,7 @@ class CompanyResult(BaseModel):
     current_employee_estimate: Optional[int] = None
     event_data: Optional[Dict[str, Any]] = None
     linkedin_profile: Optional[Dict[str, Any]] = None
+    linkedin_url: Optional[str] = None
 
 
 class SearchMetadata(BaseModel):
@@ -176,17 +173,15 @@ async def intelligent_search(
                 has_filters=bool(user_filter_dict),
                 filters=user_filter_dict,
             )
-            _search_fn = functools.partial(
-                orchestrator.search,
-                request.query,
-                request.limit,
-                request.page,
-                trace_id,
-                request.include_reasoning,
-                user_filter_dict,
-            )
             orch_response = await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(_THREAD_POOL, _search_fn),
+                orchestrator.search(
+                    request.query,
+                    request.limit,
+                    request.page,
+                    trace_id,
+                    request.include_reasoning,
+                    user_filter_dict,
+                ),
                 timeout=get_settings().SEARCH_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -275,11 +270,15 @@ async def intelligent_search_stream(
     event_queue: asyncio.Queue = asyncio.Queue()
 
     def _progress_cb(phase: str, message: str) -> None:
-        """Called from the agent worker thread; puts an event on the async queue."""
-        asyncio.run_coroutine_threadsafe(
-            event_queue.put({"type": "progress", "phase": phase, "message": message}),
-            loop,
-        )
+        """Progress sink — called from the same loop the search runs on.
+
+        ``put_nowait`` is safe because the queue is unbounded and we are
+        already on the event-loop thread. No cross-thread bridging needed.
+        """
+        try:
+            event_queue.put_nowait({"type": "progress", "phase": phase, "message": message})
+        except Exception:
+            pass  # Never let a SSE failure break the search.
 
     async def _event_generator():
         yield "data: " + json.dumps({"type": "progress", "phase": "started", "message": "Search started…"}) + "\n\n"
@@ -287,11 +286,9 @@ async def intelligent_search_stream(
         orchestrator = get_search_orchestrator()
         user_filter_dict = request.filters.model_dump(exclude_none=True) if request.filters else {}
 
-        # Check intent first — only agentic searches benefit from streaming.
-        # For regular/semantic we still use the streaming endpoint but progress
-        # is just start→done since they're fast.
-        def _run_search():
-            return orchestrator.search(
+        # Run the search as a regular task on this loop — no thread pool.
+        search_task = asyncio.create_task(
+            orchestrator.search(
                 request.query,
                 request.limit,
                 request.page,
@@ -300,8 +297,7 @@ async def intelligent_search_stream(
                 user_filter_dict,
                 progress_callback=_progress_cb,
             )
-
-        search_task = loop.run_in_executor(_THREAD_POOL, _run_search)
+        )
 
         # Drain progress events while search runs.
         while not search_task.done():
@@ -460,5 +456,146 @@ async def get_index_stats():
     from app.config import get_settings
     settings = get_settings()
     os_service = get_opensearch_service()
-    stats = os_service.get_index_stats(settings.OPENSEARCH_INDEX)
-    return {"index": settings.OPENSEARCH_INDEX, **stats}
+    stats = os_service.get_index_stats(settings.OPENSEARCH_INDEX_NAME)
+    return {"index": settings.OPENSEARCH_INDEX_NAME, **stats}
+
+
+# ============================================================================
+# Facet Lookup Endpoints (UI dropdown population)
+# ============================================================================
+
+# In-process cache for facet lookups (small, slow-changing, safe to memoize).
+_FACETS_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+_facets_cache: Dict[str, tuple[float, Any]] = {}
+
+
+def _facets_cache_get(key: str) -> Optional[Any]:
+    entry = _facets_cache.get(key)
+    if not entry:
+        return None
+    expires_at, value = entry
+    if _time.time() > expires_at:
+        _facets_cache.pop(key, None)
+        return None
+    return value
+
+
+def _facets_cache_set(key: str, value: Any) -> None:
+    _facets_cache[key] = (_time.time() + _FACETS_TTL_SECONDS, value)
+
+
+def _aggregate_keyword(field: str, filters: Optional[List[Dict[str, Any]]] = None,
+                       size: int = 1000) -> List[Dict[str, Any]]:
+    """Run a keyword terms aggregation against the configured index."""
+    from app.services.opensearch_service import get_opensearch_service
+    from app.config import get_settings
+    settings = get_settings()
+    os_service = get_opensearch_service()
+    return os_service.aggregate_terms(
+        index=settings.OPENSEARCH_INDEX_NAME,
+        field=field,
+        size=size,
+        filters=filters,
+    )
+
+
+@router.get("/facets/industries", tags=["facets"])
+async def list_industries():
+    """List all distinct industries present in the index (sorted alphabetically).
+
+    Used by the UI to populate the industry filter dropdown so it only shows
+    values that exist in the data.
+    """
+    cache_key = "facets:industries"
+    cached = _facets_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        buckets = await asyncio.to_thread(
+            _aggregate_keyword, "industry.keyword", None, 2000
+        )
+        payload = {"industries": buckets, "total": len(buckets)}
+        _facets_cache_set(cache_key, payload)
+        return payload
+    except Exception as e:
+        logger.error("list_industries_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list industries.")
+
+
+@router.get("/facets/countries", tags=["facets"])
+async def list_countries():
+    """List all distinct countries present in the index (sorted alphabetically)."""
+    cache_key = "facets:countries"
+    cached = _facets_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        buckets = await asyncio.to_thread(
+            _aggregate_keyword, "country", None, 1000
+        )
+        payload = {"countries": buckets, "total": len(buckets)}
+        _facets_cache_set(cache_key, payload)
+        return payload
+    except Exception as e:
+        logger.error("list_countries_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list countries.")
+
+
+@router.get("/facets/states", tags=["facets"])
+async def list_states(
+    country: str = Query(..., min_length=1, description="Country to filter states by"),
+):
+    """List distinct states/provinces in the index for a given country."""
+    key_country = country.strip().lower()
+    cache_key = f"facets:states:{key_country}"
+    cached = _facets_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        buckets = await asyncio.to_thread(
+            _aggregate_keyword,
+            "state",
+            [{"term": {"country": key_country}}],
+            2000,
+        )
+        payload = {"country": country, "states": buckets, "total": len(buckets)}
+        _facets_cache_set(cache_key, payload)
+        return payload
+    except Exception as e:
+        logger.error("list_states_failed", country=country, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list states.")
+
+
+@router.get("/facets/cities", tags=["facets"])
+async def list_cities(
+    country: str = Query(..., min_length=1, description="Country to filter cities by"),
+    state: str = Query(..., min_length=1, description="State/province to filter cities by"),
+):
+    """List distinct cities in the index for a given country + state."""
+    key_country = country.strip().lower()
+    key_state = state.strip().lower()
+    cache_key = f"facets:cities:{key_country}:{key_state}"
+    cached = _facets_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        buckets = await asyncio.to_thread(
+            _aggregate_keyword,
+            "city",
+            [
+                {"term": {"country": key_country}},
+                {"term": {"state": key_state}},
+            ],
+            5000,
+        )
+        payload = {
+            "country": country,
+            "state": state,
+            "cities": buckets,
+            "total": len(buckets),
+        }
+        _facets_cache_set(cache_key, payload)
+        return payload
+    except Exception as e:
+        logger.error("list_cities_failed", country=country, state=state, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list cities.")

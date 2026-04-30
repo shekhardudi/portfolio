@@ -8,9 +8,19 @@ export interface ChatRequest {
   employee_email?: string;
 }
 
+export interface Citation {
+  document: string;
+  section?: string;
+}
+
+export type ChatStatus = 'complete' | 'pending_approval' | 'needs_clarification' | string;
+
 export interface ChatResponse {
   session_id: string;
   reply: string;
+  status?: ChatStatus;
+  request_id?: string | null;
+  citations: Citation[];
   pending_approvals?: ApprovalItem[];
   tool_calls?: { name: string; arguments: unknown }[];
 }
@@ -32,8 +42,9 @@ export interface ApprovalDecision {
 
 interface BackendChatResponse {
   response: string;
-  status?: string;
+  status?: ChatStatus;
   request_id?: string | null;
+  citations?: Citation[];
 }
 
 interface BackendPendingApproval {
@@ -66,7 +77,7 @@ function mapPendingApproval(item: BackendPendingApproval): ApprovalItem {
   };
 }
 
-export function chat(req: ChatRequest, signal?: AbortSignal) {
+export function chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
   return apiFetch<BackendChatResponse>(`${BASE}/chat`, {
     method: 'POST',
     body: JSON.stringify({
@@ -79,6 +90,9 @@ export function chat(req: ChatRequest, signal?: AbortSignal) {
   }).then((res) => ({
     session_id: req.session_id,
     reply: res.response,
+    status: res.status,
+    request_id: res.request_id ?? null,
+    citations: res.citations ?? [],
     pending_approvals: [],
     tool_calls: [],
   }));
@@ -91,14 +105,18 @@ export function listApprovals(session_id?: string) {
   );
 }
 
-export function decideApproval(decision: ApprovalDecision) {
+export function decideApproval(
+  decision: ApprovalDecision,
+  approverEmail: string,
+) {
   return apiFetch<{ request_id: string; status: string }>(
     `${BASE}/approvals/${encodeURIComponent(decision.id)}`,
     {
-    method: 'POST',
+      method: 'POST',
       body: JSON.stringify({
         decision: decision.decision === 'approve' ? 'approved' : 'denied',
-        approver_email: 'manager@example.com',
+        approver_email: approverEmail,
+        reason: decision.reason,
       }),
     },
   ).then((res) => ({

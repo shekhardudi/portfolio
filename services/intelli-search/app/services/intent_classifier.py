@@ -70,6 +70,16 @@ class QueryIntent(BaseModel):
     reasoning: str = Field(
         description="Brief reasoning for the classification decision"
     )
+    named_companies: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Specific named companies referenced in the query that warrant "
+            "per-company enrichment (e.g. LinkedIn lookup). Only populate "
+            "for AGENTIC queries that mention concrete company names "
+            "(quoted strings, legal suffixes like 'Inc/Ltd/GmbH', or known "
+            "brands such as 'OpenAI', 'Stripe'). Empty list otherwise."
+        ),
+    )
 
 
 class IntentClassifier:
@@ -155,6 +165,7 @@ Return a JSON object with ALL of these keys:
 - needs_external_data: true/false
 - external_data_type: null or "news"|"funding"|"events"
 - field_boosts: {{"name": 1.0, "domain": 1.0, "industry": 1.0, "searchable_text": 1.0, "locality": 1.0}}  // adjust values for SEMANTIC; return empty {{}} for REGULAR/AGENTIC
+- named_companies: []  // For AGENTIC queries only: list of specific companies named in the query (e.g. ["OpenAI", "Stripe Inc"]); empty [] otherwise
 - reasoning: 1-2 sentence explanation"""
 
         try:
@@ -211,7 +222,18 @@ Return a JSON object with ALL of these keys:
                 pass
             # Fallback: return semantic for safety
             return self._semantic_fallback_intent(query)
-    
+
+    async def aclassify(self, query: str, trace_id: Optional[str] = None) -> QueryIntent:
+        """Async wrapper around :meth:`classify`.
+
+        Runs the (cache-aware) sync classify in a worker thread so the event
+        loop is never blocked by an OpenAI HTTP call. The Instructor sync
+        client is preserved as the source of truth — wrapping with
+        ``asyncio.to_thread`` keeps the cache + retry logic intact.
+        """
+        import asyncio as _asyncio
+        return await _asyncio.to_thread(self.classify, query, trace_id)
+
     def _empty_query_intent(self) -> QueryIntent:
         """Return intent for empty/None queries"""
         return QueryIntent(

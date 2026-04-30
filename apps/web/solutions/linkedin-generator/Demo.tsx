@@ -1,132 +1,83 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Wand2 } from 'lucide-react';
-import { generate, pollJob, type JobRecord } from './client';
-import { ApiError } from '@/lib/api';
+import { RefreshCw } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/toaster';
+import { clearDemoState, useDemoState } from './useDemoState';
+import ScoutPanel from './ScoutPanel';
+import ProductionStudio from './ProductionStudio';
+import FinalOutput from './FinalOutput';
+import ImageStudio from './ImageStudio';
+import CostTracker from './CostTracker';
+
+type InnerTab = 'scout' | 'studio' | 'output';
 
 export default function Demo() {
-  const [topic, setTopic] = useState('Agentic AI workflows');
-  const [angle, setAngle] = useState(
-    'Why most agentic systems are overengineered for the problems they actually solve',
+  const [state, dispatch] = useDemoState();
+  const [innerTab, setInnerTab] = useState<InnerTab>(() =>
+    state.crew_done ? 'output' : state.pulse_done ? 'studio' : 'scout',
   );
-  const [busy, setBusy] = useState(false);
-  const [job, setJob] = useState<JobRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+  const { show: toast } = useToast();
 
-  async function run() {
-    setBusy(true);
-    setJob(null);
-    setError(null);
-    const startedAt = Date.now();
-    setElapsed(0);
-    try {
-      const ack = await generate({ topic, leader_angle: angle });
-      const final = await pollJob(ack.job_id, {
-        intervalMs: 3_000,
-        timeoutMs: 240_000,
-        onTick: (j) => {
-          setJob(j);
-          setElapsed(Math.round((Date.now() - startedAt) / 1000));
-        },
-      });
-      setJob(final);
-    } catch (e) {
-      setError(e instanceof ApiError ? `${e.status} — ${e.body}` : (e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  function importToStudio(heading: string, body: string) {
+    const trimmed = heading === '__intro__' ? body : `${heading}\n\n${body}`;
+    dispatch({ type: 'IMPORT_TOPIC', topic: trimmed.slice(0, 280) });
+    setInnerTab('studio');
+    toast({
+      title: 'Imported into Studio',
+      description: heading === '__intro__' ? 'Intro section' : heading,
+    });
+  }
+
+  function reset() {
+    clearDemoState();
+    dispatch({ type: 'RESET' });
+    setInnerTab('scout');
+    toast({ title: 'Session reset', description: 'Cleared local draft + image.' });
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          run();
-        }}
-        className="space-y-4 rounded-xl border border-border bg-muted/20 p-5"
-      >
-        <Field label="Topic">
-          <input
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none"
+    <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
+      <Tabs value={innerTab} onValueChange={(v) => setInnerTab(v as InnerTab)}>
+        <TabsList>
+          <TabsTrigger value="scout">Scout</TabsTrigger>
+          <TabsTrigger value="studio">Studio</TabsTrigger>
+          <TabsTrigger value="output">Output</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="scout">
+          <ScoutPanel state={state} dispatch={dispatch} onImport={importToStudio} />
+        </TabsContent>
+
+        <TabsContent value="studio">
+          <ProductionStudio
+            state={state}
+            dispatch={dispatch}
+            onCompleted={() => setInnerTab('output')}
           />
-        </Field>
-        <Field label="Leader angle (the take)">
-          <textarea
-            value={angle}
-            onChange={(e) => setAngle(e.target.value)}
-            rows={4}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none"
-          />
-        </Field>
+        </TabsContent>
+
+        <TabsContent value="output">
+          <div className="grid gap-4">
+            <FinalOutput state={state} dispatch={dispatch} onReset={reset} />
+            <ImageStudio state={state} dispatch={dispatch} />
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <aside className="space-y-3">
+        <CostTracker cost={state.cost} />
         <button
-          type="submit"
-          disabled={busy || !topic.trim() || !angle.trim()}
-          className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+          onClick={reset}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-muted"
         >
-          {busy ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" /> generating ({elapsed}s)
-            </>
-          ) : (
-            <>
-              <Wand2 className="h-4 w-4" /> generate post
-            </>
-          )}
+          <RefreshCw className="h-3.5 w-3.5" /> Reset session
         </button>
-        {job && (
-          <div className="text-xs text-muted-foreground">
-            job: <code className="text-foreground">{job.job_id.slice(0, 8)}</code> ·{' '}
-            status: <code className="text-foreground">{job.status}</code>
-          </div>
-        )}
-        {error && (
-          <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">
-            {error}
-          </div>
-        )}
-      </form>
-
-      <div className="rounded-xl border border-border bg-muted/20 p-5">
-        <h4 className="text-sm font-semibold">Output</h4>
-        {!job && (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Submit a topic + angle to draft a post. Runs take 60–180s — the agents do real
-            web research.
-          </p>
-        )}
-        {job?.status === 'succeeded' && job.result && (
-          <article className="prose prose-invert mt-3 max-w-none whitespace-pre-wrap text-sm">
-            {job.result}
-          </article>
-        )}
-        {job?.status === 'failed' && (
-          <pre className="mt-3 max-h-80 overflow-auto rounded bg-background p-2 text-xs text-red-300">
-            {job.error}
-          </pre>
-        )}
-        {(job?.status === 'queued' || job?.status === 'running') && (
-          <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {job.status === 'queued'
-              ? 'waiting in queue…'
-              : 'crew is researching + drafting…'}
-          </div>
-        )}
-      </div>
+        <p className="rounded-md border border-border bg-muted/40 p-2.5 text-xs text-foreground/70">
+          Powered by GPT-4o + Claude + DALL-E. Draft + image persist in your browser only.
+        </p>
+      </aside>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium">{label}</span>
-      {children}
-    </label>
   );
 }

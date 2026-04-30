@@ -59,18 +59,37 @@ export async function apiFetch<T = unknown>(
 /**
  * Stream Server-Sent Events from a URL. Calls onMessage for each `data:` line.
  * Returns a cancel() function to abort early.
+ *
+ * Supports GET (default) or POST with a JSON body for endpoints like
+ * `/api/search/intelligent/stream` that accept the full request body.
  */
 export function streamSSE(
   url: string,
   onMessage: (data: string) => void,
-  opts: { onError?: (e: Error) => void; signal?: AbortSignal } = {},
+  opts: {
+    onError?: (e: Error) => void;
+    signal?: AbortSignal;
+    method?: 'GET' | 'POST';
+    body?: BodyInit;
+    headers?: HeadersInit;
+  } = {},
 ): () => void {
   const ctrl = new AbortController();
   const merged = mergeSignals(ctrl.signal, opts.signal);
 
   (async () => {
     try {
-      const res = await fetch(url, { signal: merged });
+      const init: RequestInit = {
+        signal: merged,
+        method: opts.method ?? 'GET',
+        headers: {
+          Accept: 'text/event-stream',
+          ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+          ...opts.headers,
+        },
+      };
+      if (opts.body !== undefined) init.body = opts.body;
+      const res = await fetch(url, init);
       if (!res.ok || !res.body) {
         throw new ApiError(res.status, await res.text().catch(() => ''));
       }

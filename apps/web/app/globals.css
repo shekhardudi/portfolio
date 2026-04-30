@@ -7,10 +7,10 @@
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
     --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted-foreground: 215 16% 38%;
     --accent: 210 40% 94%;
     --accent-foreground: 222 47% 11%;
-    --border: 214 32% 91%;
+    --border: 214 32% 88%;
     --ring: 215 20% 65%;
     --font-sans: 'Inter', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -19,18 +19,38 @@
   .dark {
     --background: 222 47% 6%;
     --foreground: 210 40% 96%;
-    --muted: 217 33% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 78%;
+    --accent: 217 33% 22%;
     --accent-foreground: 210 40% 96%;
-    --border: 217 33% 17%;
-    --ring: 215 20% 65%;
+    --border: 217 33% 24%;
+    --ring: 215 20% 75%;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground text-sm;
     font-feature-settings: 'cv11', 'ss01';
   }
+}
+
+@layer components {
+  /* Subtle pulse used to highlight chips that match an AI-extracted intent. */
+  @keyframes ai-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.35);
+    }
+  }
+  .animate-ai-pulse {
+    animation: ai-pulse 1.2s ease-in-out 2;
+  }
+}
+
+.demo-prose pre {
+  font-size: 0.8125rem;
+  line-height: 1.55;
 }
 
 @layer components {

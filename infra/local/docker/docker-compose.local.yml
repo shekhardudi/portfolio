@@ -21,12 +21,12 @@ volumes:
 
 services:
   opensearch:
-    image: opensearchproject/opensearch:2.13.0
+    image: opensearchproject/opensearch:3.5.0
     container_name: portfolio-local-opensearch
     environment:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "OPENSEARCH_JAVA_OPTS=-Xms3g -Xmx3g"
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD:-MySecurePassword123!}
     ulimits:
       memlock: { soft: -1, hard: -1 }
@@ -43,7 +43,7 @@ services:
     depends_on:
       - opensearch
     environment:
-      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      OPENSEARCH_HOSTS: '["https://portfolio-local-opensearch:9200"]'
       OPENSEARCH_USERNAME: admin
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-MySecurePassword123!}
     ports:
