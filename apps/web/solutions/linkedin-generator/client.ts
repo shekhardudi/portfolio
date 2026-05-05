@@ -1,79 +1,17 @@
+/**
+ * Typed client for the upgraded LinkedIn Post Generator backend.
+ *
+ * Backend mounts everything under /api/v1. Set `NEXT_PUBLIC_LINKEDIN_API` to
+ * the host (e.g. `http://localhost:8000`); we append the version prefix here.
+ */
+
 import { apiFetch, ApiError } from '@/lib/api';
 
-const BASE = process.env.NEXT_PUBLIC_LINKEDIN_API ?? '/linkedin-generator';
+const HOST = process.env.NEXT_PUBLIC_LINKEDIN_API ?? '';
+const BASE = `${HOST}/api/v1`;
 
 /** Public for the Demo's "Open live app ↗" fallback links. */
-export const LINKEDIN_API_BASE = BASE;
-
-export interface GenerateRequest {
-  topic: string;
-  leader_angle: string;
-  author_name?: string;
-  author_title?: string;
-  author_location?: string;
-  author_vibe?: string;
-}
-
-export interface GenerateAck {
-  job_id: string;
-  status: 'queued';
-}
-
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
-
-export interface JobRecord {
-  job_id: string;
-  status: JobStatus;
-  created_at: string;
-  updated_at: string;
-  request: GenerateRequest;
-  result?: string;
-  error?: string;
-}
-
-export function generate(req: GenerateRequest) {
-  return apiFetch<GenerateAck>(`${BASE}/generate`, {
-    method: 'POST',
-    body: JSON.stringify(req),
-    timeoutMs: 15_000,
-  });
-}
-
-export function getJob(id: string) {
-  return apiFetch<JobRecord>(`${BASE}/jobs/${id}`);
-}
-
-/**
- * Poll a job until it reaches a terminal state. Calls onTick per poll so the
- * UI can show elapsed time / status. Throws on timeout.
- */
-export async function pollJob(
-  id: string,
-  opts: {
-    intervalMs?: number;
-    timeoutMs?: number;
-    onTick?: (job: JobRecord) => void;
-    signal?: AbortSignal;
-  } = {},
-): Promise<JobRecord> {
-  const { intervalMs = 3_000, timeoutMs = 240_000, onTick, signal } = opts;
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (signal?.aborted) throw new Error('aborted');
-    const job = await getJob(id);
-    onTick?.(job);
-    if (job.status === 'succeeded' || job.status === 'failed') return job;
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error(`polling timed out after ${Math.round(timeoutMs / 1000)}s`);
-}
-
-// ---------------------------------------------------------------------------
-// Scout & image — endpoints under "backend follow-ups" in the upgrade plan.
-// We attempt the call; if the backend doesn't expose it yet (404 / network),
-// the Demo surfaces a "Run on live app ↗" fallback link.
-// ---------------------------------------------------------------------------
+export const LINKEDIN_API_BASE = HOST || '/';
 
 export class EndpointMissingError extends Error {
   constructor(message: string) {
@@ -82,24 +20,7 @@ export class EndpointMissingError extends Error {
   }
 }
 
-export interface ScoutRunRequest {
-  modules: string[];
-  days: number;
-}
-
-export interface ScoutAck {
-  job_id: string;
-  status: 'queued';
-}
-
-export interface ScoutJobRecord {
-  job_id: string;
-  status: JobStatus;
-  result_md?: string;
-  error?: string;
-}
-
-async function tryEndpoint<T>(path: string, init: RequestInit, timeoutMs?: number) {
+async function tryEndpoint<T>(path: string, init: RequestInit = {}, timeoutMs?: number) {
   try {
     return await apiFetch<T>(`${BASE}${path}`, { ...init, timeoutMs });
   } catch (e) {
@@ -110,41 +31,208 @@ async function tryEndpoint<T>(path: string, init: RequestInit, timeoutMs?: numbe
   }
 }
 
-export function scoutRun(req: ScoutRunRequest) {
-  return tryEndpoint<ScoutAck>('/scout/run', {
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+
+export interface HealthResponse {
+  status: string;
+  version: string;
+  scout_backend: string;
+  keys_present: Record<string, boolean>;
+  ollama_reachable?: boolean | null;
+}
+
+export function health() {
+  return tryEndpoint<HealthResponse>('/health', {}, 5_000);
+}
+
+// ---------------------------------------------------------------------------
+// Scout
+// ---------------------------------------------------------------------------
+
+export interface ScoutRequest {
+  modules: string[];
+  days: number;
+}
+
+export interface ScoutAck {
+  job_id: string;
+  status: string;
+}
+
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface ScoutJob {
+  job_id: string;
+  kind: 'scout';
+  status: JobStatus;
+  created_at: string;
+  updated_at: string;
+  progress: {
+    step?: number;
+    total?: number;
+    module?: string;
+    phase?: string;
+    message?: string;
+    callbacks?: Array<{
+      ts: string;
+      module: string;
+      phase: string;
+      message: string;
+    }>;
+  };
+  result?: { report_md: string; modules: string[]; days: number; cost_breakdown?: CostBreakdown };
+  error?: string;
+}
+
+export function startScout(body: ScoutRequest) {
+  return tryEndpoint<ScoutAck>('/scout', {
     method: 'POST',
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   }, 15_000);
 }
 
-export function getScoutJob(id: string) {
-  return tryEndpoint<ScoutJobRecord>(`/scout/jobs/${id}`, {});
+export function getScout(id: string) {
+  return tryEndpoint<ScoutJob>(`/scout/${encodeURIComponent(id)}`, {}, 60_000);
 }
 
-export async function pollScoutJob(
-  id: string,
-  opts: {
-    intervalMs?: number;
-    timeoutMs?: number;
-    onTick?: (job: ScoutJobRecord) => void;
-    signal?: AbortSignal;
-  } = {},
-): Promise<ScoutJobRecord> {
-  const { intervalMs = 3_000, timeoutMs = 300_000, onTick, signal } = opts;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (signal?.aborted) throw new Error('aborted');
-    const job = await getScoutJob(id);
-    onTick?.(job);
-    if (job.status === 'succeeded' || job.status === 'failed') return job;
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error('scout polling timed out');
+// ---------------------------------------------------------------------------
+// Posts
+// ---------------------------------------------------------------------------
+
+export interface PostRequest {
+  topic: string;
+  leader_angle: string;
+  author_name: string;
+  author_title: string;
+  author_location: string;
+  author_vibe: string;
+  audience: 'engineering' | 'business';
 }
 
-export function generateImage(prompt: string) {
-  return tryEndpoint<{ image_url: string }>('/image/generate', {
+export interface PostAck {
+  job_id: string;
+  status: string;
+}
+
+/** Single agent-stream event emitted by the backend during a post run. */
+export interface AgentEvent {
+  ts: string;
+  /** thought | tool | tool_started | tool_result | answer | task_done | stage | step | agent_started | reasoning */
+  kind: string;
+  /** Agent role/name. May be "—" when unknown. */
+  agent: string;
+  text: string;
+  cls?: string;
+}
+
+export type PostStage = 'queued' | 'research' | 'writing' | 'critique' | 'visual_director';
+
+export interface PostProgress {
+  stage?: PostStage;
+  run_id?: string;
+  events?: AgentEvent[];
+}
+
+export interface CostBreakdown {
+  scout?: { model?: string; prompt_tokens: number; completion_tokens: number; total_tokens: number; cost_usd: number };
+  crew?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost_usd: number };
+  visual_director?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost_usd: number };
+  image?: { calls: number; cost_usd: number };
+  total_cost_usd: number;
+}
+
+export interface PostResult {
+  run_id: string;
+  post_draft: string;
+  image_prompt: string;
+  image_plan?: Record<string, unknown>;
+  emotional_beats?: string[];
+  raw_crew_output?: string;
+  cost_breakdown?: CostBreakdown;
+  /** Some result snapshots (after image gen) carry image paths. */
+  image_paths?: string[];
+}
+
+export interface PostJob {
+  job_id: string;
+  kind: 'posts';
+  status: JobStatus;
+  created_at: string;
+  updated_at: string;
+  progress: PostProgress;
+  result?: PostResult;
+  error?: string;
+}
+
+export function startPost(body: PostRequest) {
+  return tryEndpoint<PostAck>('/posts', {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
-  }, 60_000);
+    body: JSON.stringify(body),
+  }, 15_000);
+}
+
+export function getPost(id: string) {
+  return tryEndpoint<PostJob>(`/posts/${encodeURIComponent(id)}`, {}, 60_000);
+}
+
+export function updatePost(id: string, post_draft: string) {
+  return tryEndpoint<PostJob>(`/posts/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ post_draft }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+
+export interface ImageRequest {
+  job_id: string;
+  prompt: string;
+  /** "low" | "medium" | "high" — blank uses backend default. */
+  quality?: '' | 'low' | 'medium' | 'high';
+}
+
+export interface ImageResponse {
+  image_id: string;
+  image_url: string;
+  run_id: string;
+}
+
+export function generateImage(body: ImageRequest) {
+  return tryEndpoint<ImageResponse>('/images', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, 120_000);
+}
+
+export function imageHref(image_id_or_url: string): string {
+  if (image_id_or_url.startsWith('http') || image_id_or_url.startsWith('/api/')) {
+    return image_id_or_url.startsWith('http')
+      ? image_id_or_url
+      : `${HOST}${image_id_or_url}`;
+  }
+  return `${BASE}/images/${encodeURIComponent(image_id_or_url)}`;
+}
+
+// ---------------------------------------------------------------------------
+// History
+// ---------------------------------------------------------------------------
+
+export interface HistoryRow {
+  run_id: string;
+  created_at: string;
+  topic: string;
+  leader_angle: string;
+  audience: string;
+  post_path?: string | null;
+  image_paths: string[];
+  cost_breakdown?: CostBreakdown | null;
+  models?: Record<string, string> | null;
+}
+
+export function listHistory(limit = 50) {
+  return tryEndpoint<HistoryRow[]>(`/history?limit=${limit}`, {}, 10_000);
 }

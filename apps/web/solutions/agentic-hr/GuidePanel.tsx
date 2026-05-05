@@ -38,9 +38,14 @@ export default function GuidePanel({ open, onClose }: Props) {
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{HOW_IT_WORKS}</ReactMarkdown>
         </div>
         <h3 className="mt-4 text-sm font-semibold">Tips</h3>
-        <div className="prose prose-invert max-w-none text-xs prose-p:my-1.5 prose-li:my-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{TIPS}</ReactMarkdown>
-        </div>
+        <ul className="mt-2 space-y-3 text-xs">
+          {TIPS.map((t) => (
+            <li key={t.title}>
+              <div className="font-semibold text-foreground/95">{t.title}</div>
+              <p className="mt-0.5 text-foreground/80">{t.body}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     </aside>
   );

@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, Loader2, RefreshCw, Send } from 'lucide-react';
+import { BookOpen, ChevronRight, Loader2, RefreshCw, Send, Sparkles } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toaster';
 import { ApiError } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import {
   chat,
   decideApproval,
@@ -22,15 +23,16 @@ import PersonaSelector from './PersonaSelector';
 import MessageBubble, { type ChatMessage } from './MessageBubble';
 import ExampleGallery from './ExampleGallery';
 import ApprovalCard from './ApprovalCard';
-import GuidePanel from './GuidePanel';
-import Integrations from './IntegrationsPanel';
+import { AssistantAvatar, UserAvatar } from './Avatars';
+import { INTEGRATIONS } from './integrations';
+import { TIPS } from './guide';
 
 function newSessionId() {
   return `demo-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 export default function Demo() {
-  const [innerTab, setInnerTab] = useState<'chat' | 'approvals' | 'integrations'>('chat');
+  const [innerTab, setInnerTab] = useState<'chat' | 'approvals'>('chat');
 
   // ── Chat state ──
   const [employee, setEmployee] = useState<Persona>(DEFAULT_EMPLOYEE);
@@ -39,8 +41,9 @@ export default function Demo() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Mirrors the original Streamlit `📖 Guide` toggle. Default open. */
-  const [showGuide, setShowGuide] = useState(true);
+  const [showGuideDock, setShowGuideDock] = useState(true);
+  const [guideTab, setGuideTab] = useState<'examples' | 'tips'>('examples');
+  const [guideTabTouched, setGuideTabTouched] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Approvals state ──
@@ -48,6 +51,7 @@ export default function Demo() {
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [approvalsLoading, setApprovalsLoading] = useState(false);
   const { show: toast } = useToast();
+  const pendingApprovalCount = approvals.filter((a) => a.status === 'pending').length;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -58,12 +62,16 @@ export default function Demo() {
     setEmployee(p);
     setSessionId(newSessionId());
     setMessages(welcomeMessages(p));
+    setGuideTab('examples');
+    setGuideTabTouched(false);
     setError(null);
   }
 
   function newConversation() {
     setSessionId(newSessionId());
     setMessages(welcomeMessages(employee));
+    setGuideTab('examples');
+    setGuideTabTouched(false);
   }
 
   async function send(text: string) {
@@ -112,11 +120,30 @@ export default function Demo() {
   }, []);
 
   useEffect(() => {
-    if (innerTab !== 'approvals') return;
     refreshApprovals();
-    const iv = window.setInterval(refreshApprovals, 10_000);
+    const intervalMs = innerTab === 'approvals' ? 10_000 : 20_000;
+    const iv = window.setInterval(refreshApprovals, intervalMs);
     return () => window.clearInterval(iv);
   }, [innerTab, refreshApprovals]);
+
+  // Context-aware right panel defaults:
+  // - Start with quick examples.
+  // - After first full assistant response, nudge to tips.
+  // - Stop auto-switching once the user manually picks a tab.
+  useEffect(() => {
+    if (!showGuideDock || guideTabTouched) return;
+
+    const userTurns = messages.filter((m) => m.role === 'user').length;
+    if (userTurns === 0) {
+      if (guideTab !== 'examples') setGuideTab('examples');
+      return;
+    }
+
+    const hasAssistantReplyAfterUser = messages.slice(1).some((m) => m.role === 'assistant');
+    if (hasAssistantReplyAfterUser && guideTab !== 'tips') {
+      setGuideTab('tips');
+    }
+  }, [guideTab, guideTabTouched, messages, showGuideDock]);
 
   async function decide(item: ApprovalItem, decision: 'approve' | 'reject', reason?: string) {
     // Optimistic remove
@@ -140,17 +167,60 @@ export default function Demo() {
   }
 
   return (
-    <Tabs value={innerTab} onValueChange={(v) => setInnerTab(v as typeof innerTab)}>
-      <TabsList>
-        <TabsTrigger value="chat">Chat</TabsTrigger>
-        <TabsTrigger value="approvals">Approvals</TabsTrigger>
-        <TabsTrigger value="integrations">Integrations</TabsTrigger>
-      </TabsList>
+    <Tabs
+      value={innerTab}
+      onValueChange={(v) => setInnerTab(v as typeof innerTab)}
+      className="w-full"
+    >
+      <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
+        <TabsList className="mb-0">
+          <TabsTrigger value="chat">Chat</TabsTrigger>
+          <TabsTrigger value="approvals">
+            <span className="inline-flex items-center gap-1.5">
+              Approvals
+              {pendingApprovalCount > 0 && (
+                <>
+                  <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="rounded-full border border-emerald-400/40 bg-emerald-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                    {pendingApprovalCount}
+                  </span>
+                </>
+              )}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-[10px] italic text-foreground/55">
+            click a chip to see live integration
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {INTEGRATIONS.map((tool) => (
+              <a
+                key={tool.name}
+                href={tool.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-2 rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-xs font-medium text-foreground/85 transition hover:border-foreground/35 hover:bg-muted/60"
+                title={tool.description}
+              >
+                <span className="text-base leading-none" aria-hidden>
+                  {tool.icon}
+                </span>
+                <span className="text-foreground/95">{tool.name}</span>
+                <span
+                  className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"
+                  aria-hidden
+                />
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* ───── Chat ───── */}
       <TabsContent value="chat">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-2">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
             <PersonaSelector
               personas={PERSONAS}
               value={employee.email}
@@ -158,78 +228,137 @@ export default function Demo() {
             />
             <button
               onClick={newConversation}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground/85 hover:bg-muted"
             >
               <RefreshCw className="h-3.5 w-3.5" /> New conversation
             </button>
             <button
-              onClick={() => setShowGuide((v) => !v)}
-              aria-pressed={showGuide}
-              className={`ml-auto inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition ${
-                showGuide
-                  ? 'border-foreground/40 bg-foreground/10 text-foreground'
-                  : 'border-border hover:bg-muted'
-              }`}
+              onClick={() => setShowGuideDock((v) => !v)}
+              aria-pressed={showGuideDock}
+              className={cn(
+                'ml-auto inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition',
+                showGuideDock
+                  ? 'border-foreground/40 bg-foreground/[0.08] text-foreground'
+                  : 'border-border bg-background/60 text-foreground/80 hover:bg-muted',
+              )}
             >
               <BookOpen className="h-3.5 w-3.5" />
-              {showGuide ? 'Hide guide' : 'Show guide'}
+              {showGuideDock ? 'Hide' : 'Show'}
+              <ChevronRight
+                className={cn(
+                  'h-3.5 w-3.5 transition-transform',
+                  showGuideDock && 'rotate-180',
+                )}
+              />
             </button>
           </div>
 
           <div
-            className={`grid gap-4 ${
-              showGuide
-                ? 'lg:grid-cols-[1fr_320px_320px]'
-                : 'lg:grid-cols-[1fr_320px]'
-            }`}
+            className={cn(
+              'grid gap-5',
+              showGuideDock
+                ? 'lg:grid-cols-[minmax(0,1fr)_340px]'
+                : 'grid-cols-1',
+            )}
           >
-            <div className="flex h-[520px] flex-col rounded-xl border border-border bg-muted/40">
-              <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
-                {messages.map((m, i) => (
-                  <MessageBubble key={i} message={m} />
-                ))}
-                {busy && (
-                  <div className="flex items-center gap-2 text-sm text-foreground/70">
-                    <Loader2 className="h-4 w-4 animate-spin" /> thinking…
-                  </div>
-                )}
-              </div>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  send(input);
-                }}
-                className="border-t border-border p-3"
-              >
-                <div className="flex gap-2">
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={`Ask as ${employee.full_name}…`}
-                    className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy || !input.trim()}
-                    className="inline-flex items-center gap-1 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-50"
-                  >
-                    <Send className="h-4 w-4" />
-                  </button>
+            <div className="min-w-0 space-y-4">
+              <div className="flex h-[640px] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-muted/35 shadow-sm">
+                <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-5 py-6">
+                  {messages.map((m, i) => (
+                    <MessageBubble key={i} message={m} userName={employee.full_name} />
+                  ))}
+                  {busy && (
+                    <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground/80">
+                      <AssistantAvatar size="sm" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Thinking through policy and tools…
+                    </div>
+                  )}
                 </div>
-                {error && <div className="mt-2 text-xs text-red-300">{error}</div>}
-              </form>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    send(input);
+                  }}
+                  className="border-t border-border bg-background/60 p-4 backdrop-blur"
+                >
+                  <div className="flex items-end gap-3">
+                    <UserAvatar name={employee.full_name} size="md" />
+                    <input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder={`Ask as ${employee.full_name}…`}
+                      className="flex-1 rounded-xl border border-border bg-background px-4 py-3 text-[15px] outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <button
+                      disabled={busy || !input.trim()}
+                      className="inline-flex items-center gap-1 rounded-xl bg-foreground px-4 py-3 text-sm font-medium text-background disabled:opacity-50"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {error && <div className="mt-2 text-xs text-red-300">{error}</div>}
+                </form>
+              </div>
             </div>
 
-            {/* Examples sidebar */}
-            <aside className="rounded-xl border border-border bg-muted/40 p-3">
-              <h4 className="mb-2 text-sm font-semibold text-foreground">
-                Try one of these
-              </h4>
-              <ExampleGallery onPick={(q) => send(q)} />
-            </aside>
+            {showGuideDock && (
+              <aside className="order-3 overflow-hidden rounded-xl border border-border bg-muted/40 shadow-sm lg:col-span-2 xl:col-span-1 xl:h-[640px] xl:sticky xl:top-20">
+                <Tabs
+                  value={guideTab}
+                  onValueChange={(v) => {
+                    setGuideTab(v as 'examples' | 'tips');
+                    setGuideTabTouched(true);
+                  }}
+                  className="flex h-full flex-col"
+                >
+                  <header className="flex items-center justify-between border-b border-border bg-background/70 px-3 py-2">
+                    <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground/90">
+                      <BookOpen className="h-4 w-4" />
+                      Guide & Tips
+                    </div>
+                  </header>
+                  <div className="p-3 pb-0">
+                    <TabsList className="grid h-auto w-full grid-cols-2 bg-background/60">
+                      <TabsTrigger value="examples" className="text-xs">
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        Try
+                      </TabsTrigger>
+                      <TabsTrigger value="tips" className="text-xs">
+                        Tips
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
 
-            {/* Inline guide rail — mirrors the original Streamlit toggle */}
-            <GuidePanel open={showGuide} onClose={() => setShowGuide(false)} />
+                  <div className="flex-1 overflow-y-auto p-3">
+                    <TabsContent value="examples" className="m-0 rounded-xl border border-border bg-background/75 p-3.5">
+                      <ExampleGallery onPick={(q) => send(q)} />
+                    </TabsContent>
+
+                    <TabsContent value="tips" className="m-0 rounded-xl border border-border bg-background/75 p-3.5">
+                      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/60">
+                        Operator Tips
+                      </h4>
+                      <ul className="space-y-3">
+                        {TIPS.map((t) => (
+                          <li
+                            key={t.title}
+                            className="rounded-lg border border-border bg-muted/30 p-3"
+                          >
+                            <div className="text-[13px] font-semibold text-foreground/95">
+                              {t.title}
+                            </div>
+                            <p className="mt-1.5 text-[13px] leading-6 text-foreground/80">
+                              {t.body}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </TabsContent>
+                  </div>
+                </Tabs>
+              </aside>
+            )}
           </div>
         </div>
       </TabsContent>
@@ -277,11 +406,6 @@ export default function Demo() {
           )}
         </div>
       </TabsContent>
-
-      {/* ───── Integrations ───── */}
-      <TabsContent value="integrations">
-        <Integrations />
-      </TabsContent>
     </Tabs>
   );
 }
@@ -291,7 +415,7 @@ function welcomeMessages(p?: Persona): ChatMessage[] {
   return [
     {
       role: 'assistant',
-      content: `Hi **${name}** — I'm the agentic HR assistant. Try:\n\n- *"How much PTO do I have?"*\n- *"I need access to Gitea"*\n- *"What is the travel reimbursement limit?"*\n\nDestructive actions (provisioning, leave applications) need manager approval — switch to the **Approvals** tab to act on them.`,
+      content: `Hi **${name}** — I'm the agentic HR assistant. Try:\n\n- *"How much leaves do I have?"*\n- *"I need access to Gitea"*\n- *"What is the travel reimbursement limit?"*\n\nDestructive actions (provisioning, leave applications) need manager approval — switch to the **Approvals** tab to act on them.`,
     },
   ];
 }

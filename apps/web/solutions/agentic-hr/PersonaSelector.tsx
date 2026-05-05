@@ -17,9 +17,13 @@ interface Props {
 }
 
 export default function PersonaSelector({ personas, value, onChange, label = 'Persona' }: Props) {
+  const selectedPersona = personas.find((p) => p.email === value);
+
   return (
-    <label className="flex items-center gap-2 text-xs">
-      <span className="text-muted-foreground">{label}</span>
+    <label className="flex items-center gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
+        {label}
+      </span>
       <Select
         value={value}
         onValueChange={(email) => {
@@ -27,15 +31,15 @@ export default function PersonaSelector({ personas, value, onChange, label = 'Pe
           if (p) onChange(p);
         }}
       >
-        <SelectTrigger className="h-8 w-56 bg-muted/40 text-xs">
-          <SelectValue />
+        <SelectTrigger className="h-10 w-60 bg-background/70 px-3 py-2 text-sm font-medium leading-5">
+          <SelectValue>{selectedPersona?.full_name}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {personas.map((p) => (
-            <SelectItem key={p.email} value={p.email}>
-              <div className="flex flex-col">
-                <span>{p.full_name}</span>
-                <span className="text-[10px] text-muted-foreground">{p.role}</span>
+            <SelectItem key={p.email} value={p.email} textValue={p.full_name} className="items-start py-2">
+              <div className="flex flex-col leading-tight">
+                <span className="text-sm font-medium">{p.full_name}</span>
+                <span className="mt-0.5 text-[11px] text-muted-foreground">{p.role}</span>
               </div>
             </SelectItem>
           ))}

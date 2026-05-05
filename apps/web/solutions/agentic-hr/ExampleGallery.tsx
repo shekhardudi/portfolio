@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronRight } from 'lucide-react';
 import { EXAMPLE_QUERIES } from './examples';
 
 interface Props {
@@ -13,13 +14,18 @@ export default function ExampleGallery({ onPick }: Props) {
         <details
           key={cat.category}
           className="group rounded-lg border border-border bg-muted/20 p-2 open:bg-muted/30"
-          open
         >
-          <summary className="cursor-pointer list-none px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-            <span className="mr-1">{cat.icon}</span>
-            {cat.category}
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-1 py-1 text-xs font-semibold text-foreground/85">
+            <span className="inline-flex items-center gap-1.5">
+              <ChevronRight className="h-3.5 w-3.5 transition group-open:rotate-90" />
+              <span>{cat.icon}</span>
+              <span>{cat.category}</span>
+            </span>
+            <span className="rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground/70">
+              {cat.queries.length}
+            </span>
           </summary>
-          <ul className="mt-1.5 space-y-1">
+          <ul className="mt-2 space-y-1.5">
             {cat.queries.map((q) => (
               <li key={q}>
                 <button

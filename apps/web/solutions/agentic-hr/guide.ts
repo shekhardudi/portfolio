@@ -26,20 +26,29 @@ Output is formatted into a Markdown-rich response with citations where applicabl
 **5 — Audit Trail**
 Every interaction is logged with intent, status, and timing metadata.`;
 
-export const TIPS = `**Switching Personas**
-Use the dropdown to test as different employees. Each persona has its own leave balances, manager, and access packages.
-
-**Apply for Leave**
-Say _"I want to take 3 days annual leave"_. If you omit the type or duration the assistant will ask one follow-up question before submitting.
-
-**Check Access Requests**
-Ask _"What's the status of my Gitea request?"_ for a specific system, or _"Show all my requests"_ for everything.
-
-**Manager Approvals**
-Open the **Approvals** tab to approve or deny pending software-access requests. Provisioning in Gitea and Mattermost runs automatically once approved.
-
-**Policy Citations**
-Policy answers include the source document and section. Ask follow-up questions — the assistant rewrites and re-searches on each turn.
-
-**Integrated Systems**
-The Integrations tab links to the live NocoDB, Gitea, and Mattermost instances backing every response.`;
+export const TIPS: { title: string; body: string }[] = [
+  {
+    title: 'Switching personas',
+    body: 'Use the dropdown to test as different employees. Each persona has its own leave balances, manager, and access packages.',
+  },
+  {
+    title: 'Apply for leave',
+    body: 'Say “I want to take 3 days annual leave”. If you omit the type or duration the assistant will ask one follow-up question before submitting.',
+  },
+  {
+    title: 'Check access requests',
+    body: 'Ask “What’s the status of my Gitea request?” for a specific system, or “Show all my requests” for everything.',
+  },
+  {
+    title: 'Manager approvals',
+    body: 'Open the Approvals tab to approve or deny pending software-access requests. Provisioning in Gitea and Mattermost runs automatically once approved.',
+  },
+  {
+    title: 'Policy citations',
+    body: 'Policy answers include the source document and section. Ask follow-up questions — the assistant rewrites and re-searches on each turn.',
+  },
+  {
+    title: 'Integrated systems',
+    body: 'The chips above the chat link to the live NocoDB, Gitea, and Mattermost instances backing every response.',
+  },
+];

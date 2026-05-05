@@ -17,6 +17,10 @@ export const meta: SolutionMeta = {
     'Tools wired into NocoDB / Gitea / Mattermost',
   ],
   tabs: ['overview', 'demo', 'architecture', 'api'],
+  architecture: {
+    image: '/architectures/agentic-hr.png',
+    alt: 'Agentic HR architecture diagram',
+  },
   apiBaseEnvVar: 'NEXT_PUBLIC_AGENTIC_HR_API',
 };
 

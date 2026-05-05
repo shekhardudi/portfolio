@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Cpu } from 'lucide-react';
+import { Cpu, Github, Linkedin } from 'lucide-react';
 
 export function SiteHeader() {
   return (
@@ -9,21 +9,31 @@ export function SiteHeader() {
           <Cpu className="h-5 w-5 text-blue-400" />
           <span>shekharlabs</span>
         </Link>
-        <nav className="flex items-center gap-6 text-sm">
+        <nav className="flex items-center gap-5 text-sm">
           <Link className="text-foreground/80 hover:text-foreground" href="/#solutions">
             Solutions
           </Link>
           <Link className="text-foreground/80 hover:text-foreground" href="/about">
             About
           </Link>
-          <Link
-            className="text-foreground/80 hover:text-foreground"
+          <a
+            className="text-foreground/60 hover:text-foreground"
+            href="https://www.linkedin.com/in/shekhar-dudi-17283717/"
+            target="_blank"
+            rel="noopener"
+            aria-label="LinkedIn"
+          >
+            <Linkedin className="h-4 w-4" />
+          </a>
+          <a
+            className="text-foreground/60 hover:text-foreground"
             href="https://github.com/shekhardudi"
             target="_blank"
             rel="noopener"
+            aria-label="GitHub"
           >
-            GitHub
-          </Link>
+            <Github className="h-4 w-4" />
+          </a>
         </nav>
       </div>
     </header>
