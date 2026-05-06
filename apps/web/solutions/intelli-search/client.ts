@@ -85,6 +85,10 @@ export interface SearchRequest {
   size?: number;
   page?: number;
   filters?: UserFilters;
+  /** Optional client-side correlator. When set, the backend registers the
+   *  orchestrator task under this id so DELETE /api/search/cancel/{id} can
+   *  free the worker slot in real time. */
+  search_id?: string;
 }
 
 export interface FacetBucket {
@@ -239,6 +243,12 @@ export interface StreamHandlers {
   onResults: (r: SearchResponse) => void;
   onError?: (e: Error) => void;
   signal?: AbortSignal;
+  /** Optional session tagging — threaded into outbound headers for log
+   *  correlation. The version isn't a server-side guard for intelli-search
+   *  (the backend is stateless); the client AbortController is the real
+   *  cancellation channel. */
+  sessionVersion?: number;
+  anonymousVisitId?: string;
 }
 
 /**
@@ -254,6 +264,7 @@ export function streamSearch(req: SearchRequest, h: StreamHandlers): () => void 
     page: req.page ?? 1,
     include_reasoning: true,
     filters: req.filters,
+    search_id: req.search_id,
   });
   return streamSSE(
     `${BASE}/api/search/intelligent/stream`,
@@ -277,8 +288,27 @@ export function streamSearch(req: SearchRequest, h: StreamHandlers): () => void 
       body,
       onError: h.onError,
       signal: h.signal,
+      sessionVersion: h.sessionVersion,
+      anonymousVisitId: h.anonymousVisitId,
     },
   );
+}
+
+/**
+ * Best-effort cancel for an in-flight streaming search. Frees the backend
+ * orchestrator task slot in real time. Errors are swallowed by the caller —
+ * the AbortController on the SSE side already protects the UI.
+ */
+export async function cancelSearch(searchId: string): Promise<void> {
+  if (!searchId) return;
+  try {
+    await apiFetch<unknown>(`${BASE}/api/search/cancel/${encodeURIComponent(searchId)}`, {
+      method: 'DELETE',
+      timeoutMs: 10_000,
+    });
+  } catch {
+    /* best-effort */
+  }
 }
 
 export async function getIndustryFacets(signal?: AbortSignal): Promise<string[]> {

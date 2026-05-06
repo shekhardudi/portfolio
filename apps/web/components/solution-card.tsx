@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import type { SolutionMeta } from '@/solutions/_types';
 import { cn } from '@/lib/utils';
+import { SolutionStatusBadge } from './solution-status-badge';
 
 export function SolutionCard({ meta }: { meta: SolutionMeta }) {
   const accent = meta.hero?.accent ?? 'from-slate-500 to-slate-700';
@@ -12,11 +13,17 @@ export function SolutionCard({ meta }: { meta: SolutionMeta }) {
     >
       <div className={cn('absolute inset-x-0 top-0 h-1 bg-gradient-to-r', accent)} />
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-semibold">{meta.title}</h3>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xl font-semibold">{meta.title}</h3>
+            {/* Hidden until a state other than `ready` lights up — keeps the
+                home cards calm by default and only flares when something is
+                actually happening across the open tabs. */}
+            <SolutionStatusBadge slug={meta.slug} hideWhenReady />
+          </div>
           <p className="mt-1 text-sm text-foreground/75">{meta.tagline}</p>
         </div>
-        <ArrowRight className="h-5 w-5 text-foreground/60 transition group-hover:translate-x-1 group-hover:text-foreground" />
+        <ArrowRight className="h-5 w-5 shrink-0 text-foreground/60 transition group-hover:translate-x-1 group-hover:text-foreground" />
       </div>
       <ul className="mt-4 space-y-1 text-sm text-foreground/75">
         {meta.highlights.map((h) => (

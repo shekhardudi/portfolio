@@ -205,3 +205,25 @@ class JobRunner:
             t.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+
+    def cancel(self, job_id: str) -> bool:
+        """Cancel a queued/running job. Returns True if a task was cancelled.
+
+        The semaphore slot is released as soon as the cancelled coroutine
+        propagates ``CancelledError`` out of ``async with self._sem`` — i.e.
+        the worker pool frees up immediately, no waiting for the underlying
+        sync engine to finish.
+        """
+        task = self._tasks.get(job_id)
+        if task is None:
+            # Job already finished (or never scheduled). Mark as cancelled in
+            # the store anyway so the client's poll sees the terminal state.
+            job = self._store.get(job_id)
+            if job is not None and job.status in (JobStatus.queued, JobStatus.running):
+                self._store.update(job_id, status=JobStatus.cancelled, error="cancelled")
+                return True
+            return False
+        if task.done():
+            return False
+        task.cancel()
+        return True

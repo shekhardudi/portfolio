@@ -18,7 +18,9 @@ import {
   Play,
   Quote,
   RefreshCw,
+  RotateCcw,
   Sparkles,
+  Square,
   Target,
   Telescope,
   X,
@@ -37,22 +39,31 @@ import { convertToDays } from './helpers';
 import {
   EndpointMissingError,
   LINKEDIN_API_BASE,
+  cancelScout,
   getScout,
   startScout,
   type ScoutBriefing,
   type ScoutFinding,
   type ScoutSignal,
+  type SessionTag,
   type SignalCategory,
 } from './client';
 import CostTracker from './CostTracker';
 import ScoutFeed from './ScoutFeed';
 import type { DemoAction, DemoState } from './useDemoState';
+import {
+  useSiteSession,
+  useSolutionSession,
+} from '@/lib/session/SessionProvider';
 
 interface Props {
   state: DemoState;
   dispatch: React.Dispatch<DemoAction>;
   /** Send the chosen angle to the Studio along with the author vibe. */
   onImport: (topic: string, take: string, vibe: string) => void;
+  /** Reset the entire scout workspace (briefing + cached job). Owned by
+   *  Demo.tsx because resetting also bumps the session workspace version. */
+  onReset: () => void;
 }
 
 const DEFAULT_VIBE = 'calm, direct, and slightly skeptical';
@@ -84,10 +95,23 @@ type PickKind = 'signal' | 'finding';
 type PickedRef = { kind: PickKind; id: string } | null;
 type BriefingTab = 'signals' | 'findings' | 'context';
 
-export default function ScoutPanel({ state, dispatch, onImport }: Props) {
+export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props) {
   const [unavailable, setUnavailable] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+
+  // Session integration: every API call is tagged with the current scout
+  // workspace version. After a "Reset Scout" click, the version bumps and
+  // any in-flight poll loops fail `shouldAccept(...)` → results dropped.
+  const session = useSolutionSession('linkedin-generator');
+  const { anonymousVisitId } = useSiteSession();
+  const scoutVersion = session.state.workspaceVersions?.scout ?? 1;
+  /** Build a SessionTag for outbound calls; recomputed each render so a
+   *  re-rendered closure always reads the latest version. */
+  const tag = (): SessionTag => ({
+    sessionVersion: scoutVersion,
+    anonymousVisitId,
+  });
 
   // Briefing now lives in demo state — persisted across tab switches and
   // hard reloads so the user can come back to their results until reset.
@@ -122,7 +146,21 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
     if (!inFlight) return;
     cancelledRef.current = false;
     if (!startedAt) setStartedAt(Date.now());
-    void poll(jobId);
+    // Resume polling using the current workspace version. The run has been
+    // ongoing across the unmount/remount; if the user bumped the version
+    // via "Reset Scout" while we were away, the first poll tick will fail
+    // shouldAccept() and abort. That's the correct behaviour.
+    void poll(jobId, scoutVersion);
+    session.setStatus('scout_running');
+    session.registerJob({
+      id: jobId,
+      slug: 'linkedin-generator',
+      workspace: 'scout',
+      startedAt: Date.now(),
+      cancel: () => {
+        void cancelScout(jobId, tag());
+      },
+    });
     // Mount-only resume: deliberately empty deps; state at mount is enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -196,11 +234,30 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
     // (the unmount cleanup flips it to true; without this reset the polling
     // loop would exit immediately after a Scout-tab switch).
     cancelledRef.current = false;
+    // Snapshot the version at request time. Polling closures re-check this
+    // against the latest session state so we drop results from a run that
+    // was reset while in flight.
+    const versionAtStart = scoutVersion;
     try {
       const days = convertToDays(state.pulse_value, state.pulse_unit);
-      const ack = await startScout({ modules: state.selected_modules, days });
+      const ack = await startScout(
+        { modules: state.selected_modules, days },
+        tag(),
+      );
       dispatch({ type: 'SCOUT_START', job_id: ack.job_id });
-      void poll(ack.job_id);
+      session.setStatus('scout_running');
+      session.registerJob({
+        id: ack.job_id,
+        slug: 'linkedin-generator',
+        workspace: 'scout',
+        startedAt: Date.now(),
+        cancel: () => {
+          // Best-effort — backend cancel is a Phase 3 no-op today; the
+          // version guard in poll() is what actually stops the dispatch.
+          void cancelScout(ack.job_id, tag());
+        },
+      });
+      void poll(ack.job_id, versionAtStart);
     } catch (e) {
       if (e instanceof EndpointMissingError) setUnavailable(true);
       else
@@ -211,7 +268,26 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
     }
   }
 
-  async function poll(jobId: string) {
+  /** User-initiated cancel of an in-flight scout. Stops the local polling
+   *  loop, fires a best-effort backend cancel, and flips the panel out of
+   *  the busy state. The action button (rendered next to Run Scout) then
+   *  re-labels from "Cancel" to "Reset Scout" so the user can clear data
+   *  on a second click if they want to. */
+  async function cancel() {
+    const jobId = state.scout_job_id;
+    if (!jobId) return;
+    cancelledRef.current = true;
+    dispatch({ type: 'SCOUT_CANCEL' });
+    session.unregisterJob(jobId);
+    session.setStatus('ready');
+    try {
+      await cancelScout(jobId, tag());
+    } catch {
+      /* best effort — local state is already cancelled */
+    }
+  }
+
+  async function poll(jobId: string, versionAtStart: number) {
     // Single in-flight loop only — protects against a remount-resume race.
     if (pollingRef.current) return;
     pollingRef.current = true;
@@ -220,8 +296,14 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
     try {
     while (!cancelledRef.current && Date.now() < deadline) {
       try {
-        const job = await getScout(jobId);
+        const job = await getScout(jobId, tag());
         consecutiveErrors = 0;
+        // Stale-result guard: if the user reset Scout while we were in
+        // flight, the workspace version moved on. Drop the tick silently —
+        // the registry already cancelled this job at reset time.
+        if (!session.shouldAccept(versionAtStart, 'scout')) {
+          return;
+        }
         const step = Number(job.progress?.step ?? 0);
         const total = Number(job.progress?.total ?? state.selected_modules.length);
         dispatch({
@@ -241,20 +323,28 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
             cost: job.result?.cost_breakdown ?? null,
             briefing: job.result?.briefing ?? null,
           });
+          session.unregisterJob(jobId);
+          session.setStatus('ready');
           return;
         }
         if (job.status === 'failed' || job.status === 'cancelled') {
           dispatch({ type: 'SCOUT_FAIL', error: job.error ?? 'scout failed' });
+          session.unregisterJob(jobId);
+          session.setStatus(job.status === 'failed' ? 'error' : 'ready');
           return;
         }
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           dispatch({ type: 'SCOUT_FAIL', error: 'scout job lost server-side' });
+          session.unregisterJob(jobId);
+          session.setStatus('error');
           return;
         }
         consecutiveErrors += 1;
         if (consecutiveErrors >= POLL_MAX_CONSECUTIVE_ERRORS) {
           dispatch({ type: 'SCOUT_FAIL', error: 'Lost connection to backend — please retry.' });
+          session.unregisterJob(jobId);
+          session.setStatus('error');
           return;
         }
       }
@@ -262,6 +352,8 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
     }
     if (!cancelledRef.current) {
       dispatch({ type: 'SCOUT_FAIL', error: 'Scout exceeded the 15 minute polling window.' });
+      session.unregisterJob(jobId);
+      session.setStatus('error');
     }
     } finally {
       pollingRef.current = false;
@@ -472,6 +564,36 @@ export default function ScoutPanel({ state, dispatch, onImport }: Props) {
                   </>
                 )}
               </button>
+
+              {/* Combined cancel/reset action. While a run is in flight this
+                  shows "Cancel" (destructive accent) and aborts the job
+                  without clearing data. Once stopped (cancelled / failed /
+                  completed) it re-labels to "Reset Scout" and clears the
+                  workspace on click. The two states are deliberately the
+                  same button so the placement next to Run Scout stays
+                  stable, but the colors differ so the action is unambiguous. */}
+              {busy ? (
+                <button
+                  type="button"
+                  onClick={() => { void cancel(); }}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/15"
+                  title="Stop the scout run. Partial output is kept; click Reset Scout to clear."
+                >
+                  <Square className="h-3.5 w-3.5 fill-current" /> Cancel
+                </button>
+              ) : (
+                (state.scout_job_id || done || failed || state.scout_status === 'cancelled') && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground/80 transition hover:bg-muted"
+                    title="Clear the briefing and active scout job. Studio drafts are kept."
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Reset Scout
+                  </button>
+                )
+              )}
+
               {state.scout_job_id && (
                 <span className="text-xs text-foreground/75">
                   job{' '}

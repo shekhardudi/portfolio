@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Filter, Sparkles } from 'lucide-react';
+import { Filter, Sparkles, X } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Drawer,
@@ -18,10 +18,15 @@ import ThinkingPanel from './ThinkingPanel';
 import ResultsList from './ResultsList';
 import { extractChips, type IntentChip } from './chips';
 import {
+  cancelSearch,
   streamSearch,
   type SearchResponse,
   type StreamEvent,
 } from './client';
+import {
+  useSiteSession,
+  useSolutionSession,
+} from '@/lib/session/SessionProvider';
 
 // Inline example queries shown on the empty Search tab, grouped by search mode.
 const CATEGORIZED_QUERIES = [
@@ -65,19 +70,24 @@ interface State {
   response: SearchResponse | null;
   error: string | null;
   rawSse: StreamEvent[];
+  /** Server-side correlator for the current search. Persisted so a remount
+   *  can reattach to the same in-flight session instead of starting over. */
+  searchId: string | null;
 }
 
 type Action =
   | { type: 'SET_QUERY'; q: string }
   | { type: 'SET_FILTERS'; filters: FiltersState }
-  | { type: 'START' }
+  | { type: 'START'; searchId: string }
+  | { type: 'RESUME'; searchId: string }
   | { type: 'INTENT'; intent: string; message?: string }
   | { type: 'SEMANTIC_PHASE'; phase: string; message: string }
   | { type: 'PROGRESS_MESSAGE'; message: string }
   | { type: 'AGENTIC_LOG'; line: string }
   | { type: 'SUCCESS'; response: SearchResponse }
   | { type: 'ERROR'; message: string }
-  | { type: 'RAW_SSE'; event: StreamEvent };
+  | { type: 'RAW_SSE'; event: StreamEvent }
+  | { type: 'CLEAR' };
 
 const INITIAL: State = {
   query: '',
@@ -90,7 +100,69 @@ const INITIAL: State = {
   response: null,
   error: null,
   rawSse: [],
+  searchId: null,
 };
+
+// Persist the demo across route changes so the user can navigate away while a
+// search is running and come back to live progress.  The backend now keeps
+// the orchestrator task alive when the SSE client disconnects (see
+// services/intelli-search/app/api/routes.py); on remount we reattach to the
+// same `searchId` and the server replays buffered events.
+const STORAGE_KEY = 'intelli-search-demo-v1';
+const RESUME_FLAG_KEY = 'intelli-search-resume-v1';
+const RUN_TIMEOUT_MS = 5 * 60_000;
+
+function loadInitial(): State {
+  if (typeof window === 'undefined') return INITIAL;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return INITIAL;
+    const parsed = JSON.parse(raw) as Partial<State> & { _savedAt?: number };
+    const merged: State = {
+      ...INITIAL,
+      ...parsed,
+      filters: parsed.filters ?? EMPTY_FILTERS,
+      agenticLogs: Array.isArray(parsed.agenticLogs) ? parsed.agenticLogs : [],
+      rawSse: Array.isArray(parsed.rawSse) ? parsed.rawSse : [],
+      searchId: parsed.searchId ?? null,
+    };
+    if (merged.status === 'searching') {
+      const stale =
+        !parsed._savedAt || Date.now() - parsed._savedAt > RUN_TIMEOUT_MS;
+      const canResume = !!merged.searchId && !!merged.query.trim();
+      if (stale || !canResume) {
+        return {
+          ...merged,
+          status: 'idle',
+          progressMessage: null,
+          searchId: null,
+        };
+      }
+      // Flag a one-shot reattach for the mount effect. The backend session
+      // is still running (or already finished and buffered); we reconnect
+      // to it via POST /intelligent/stream with the same search_id and
+      // replay events in order.
+      try {
+        window.sessionStorage.setItem(RESUME_FLAG_KEY, merged.searchId!);
+      } catch {
+        /* ignore */
+      }
+      // Keep status='searching' so the thinking panel stays visible while
+      // we reconnect; clear the per-tick log fields — the replay rebuilds
+      // them in order so we don't end up with duplicates.
+      return {
+        ...merged,
+        agenticLogs: [],
+        rawSse: [],
+        progressMessage: null,
+        error: null,
+      };
+    }
+    return merged;
+  } catch {
+    return INITIAL;
+  }
+}
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
@@ -109,6 +181,20 @@ function reducer(s: State, a: Action): State {
         startTime: Date.now(),
         error: null,
         rawSse: [],
+        searchId: a.searchId,
+      };
+    case 'RESUME':
+      // Reattach to an in-flight backend search after navigation. Keep the
+      // query and filters; clear the per-tick log fields because the server
+      // will replay them in order.
+      return {
+        ...s,
+        status: 'searching',
+        progressMessage: null,
+        agenticLogs: [],
+        rawSse: [],
+        error: null,
+        searchId: a.searchId,
       };
     case 'INTENT':
       return {
@@ -140,6 +226,14 @@ function reducer(s: State, a: Action): State {
       return { ...s, status: 'error', error: a.message };
     case 'RAW_SSE':
       return { ...s, rawSse: [...s.rawSse, a.event] };
+    case 'CLEAR':
+      // "Clear search" — wipes everything except the cached filter facets the
+      // user might still want. Filter selections are kept; the query, status,
+      // results, and SSE log all reset.
+      return {
+        ...INITIAL,
+        filters: s.filters,
+      };
     default:
       return s;
   }
@@ -149,13 +243,78 @@ function reducer(s: State, a: Action): State {
 // Demo
 // ---------------------------------------------------------------------------
 export default function Demo() {
-  const [state, dispatch] = useReducer(reducer, INITIAL);
+  const [state, dispatch] = useReducer(reducer, undefined, loadInitial);
   const [innerTab, setInnerTab] = useState<'search' | 'raw'>('search');
   const [filtersOpen, setFiltersOpen] = useState(false); // mobile drawer
   // Glow on AI-extracted filters auto-decays 2.5s after a successful search,
   // matching the original Vite App's UX.
   const [glowActive, setGlowActive] = useState(false);
   const cancelRef = useRef<(() => void) | null>(null);
+  /** Stable handle for the SSE job in the registry; rotates per search. */
+  const jobIdRef = useRef<string | null>(null);
+
+  // Session integration. Intelli-search is stateless server-side, so the
+  // only "cancel" we have is the SSE AbortController held in cancelRef.
+  // The version guard still useful — protects against late progress events
+  // after the user clicks Clear search.
+  const session = useSolutionSession('intelli-search');
+  const { anonymousVisitId } = useSiteSession();
+  const sessionVersion = session.state.version;
+
+  // Drive the per-solution status surface.
+  useEffect(() => {
+    switch (state.status) {
+      case 'searching':
+        session.setStatus('searching');
+        break;
+      case 'error':
+        session.setStatus('error');
+        break;
+      case 'idle':
+      case 'results':
+      default:
+        session.setStatus('ready');
+        break;
+    }
+  }, [state.status, session]);
+
+  // Persist demo state across route navigation so coming back shows the same
+  // query, results, and SSE log instead of an empty form.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const blob = JSON.stringify({ ...state, _savedAt: Date.now() });
+      window.sessionStorage.setItem(STORAGE_KEY, blob);
+    } catch {
+      /* quota / disabled — drop persistence */
+    }
+  }, [state]);
+
+  // One-shot: when we rehydrate a search that was in flight, reattach to the
+  // server-side session via its persisted `searchId`. The backend keeps the
+  // orchestrator task alive across the client disconnect (see
+  // services/intelli-search/app/api/routes.py), so reconnecting just replays
+  // the buffered events and tails any new ones — the user picks up exactly
+  // where they left off without restarting the search.
+  const didResumeRef = useRef(false);
+  useEffect(() => {
+    if (didResumeRef.current) return;
+    if (typeof window === 'undefined') return;
+    let resumeId: string | null = null;
+    try {
+      resumeId = window.sessionStorage.getItem(RESUME_FLAG_KEY);
+      if (resumeId) window.sessionStorage.removeItem(RESUME_FLAG_KEY);
+    } catch {
+      /* ignore */
+    }
+    didResumeRef.current = true;
+    if (resumeId && state.query.trim()) {
+      run(undefined, { resumeId });
+    }
+    // Run only on mount — `run()` reads the latest state via closure on each
+    // call, and we explicitly only want to fire this once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (state.status !== 'results') return;
@@ -176,18 +335,42 @@ export default function Demo() {
   // Highlights handed to FilterPanel/ResultsList — only "on" while glow is active.
   const liveHighlights = glowActive ? aiHighlights : { industries: [], country: undefined };
 
-  function run(explicitQuery?: string) {
+  function run(_explicitQuery?: string, opts?: { resumeId?: string }) {
     cancelRef.current?.();
+    if (jobIdRef.current) {
+      // unregister the prior job before starting a new one
+      session.unregisterJob(jobIdRef.current);
+      jobIdRef.current = null;
+    }
     const q = state.query.trim();
     if (!q) return;
     const mode = 'auto';
-    dispatch({ type: 'START' });
     const filters = filtersToBackend(state.filters);
+    const versionAtStart = sessionVersion;
+
+    // For a resume we reuse the server-side session's id; for a fresh search
+    // we mint a new one. Either way it goes into the body as `search_id`
+    // (the DELETE/cancel correlator and the reattach key).
+    const handleId = opts?.resumeId ?? `intelli-${Date.now().toString(36)}`;
+    jobIdRef.current = handleId;
+
+    if (opts?.resumeId) {
+      dispatch({ type: 'RESUME', searchId: handleId });
+    } else {
+      dispatch({ type: 'START', searchId: handleId });
+    }
 
     const cancel = streamSearch(
-      { query: q, mode, size: 20, page: 1, filters },
+      { query: q, mode, size: 20, page: 1, filters, search_id: handleId },
       {
+        sessionVersion: versionAtStart,
+        anonymousVisitId,
         onEvent: (event) => {
+          // Stale-result guard: drop events from a search the user already
+          // cleared/replaced. Tested against the live session version so a
+          // CLEAR (which bumps the solution version) silently abandons in-
+          // flight progress events.
+          if (!session.shouldAccept(versionAtStart)) return;
           dispatch({ type: 'RAW_SSE', event });
           if (event.type !== 'progress') return;
           const phase = (event as { phase?: string }).phase ?? '';
@@ -214,11 +397,51 @@ export default function Demo() {
         },
         // The streaming endpoint already emits a fully-formed SearchResponse
         // under the `results` event — no second POST required.
-        onResults: (res) => dispatch({ type: 'SUCCESS', response: res }),
-        onError: (e) => handleError(e),
+        onResults: (res) => {
+          if (!session.shouldAccept(versionAtStart)) return;
+          dispatch({ type: 'SUCCESS', response: res });
+          if (jobIdRef.current) {
+            session.unregisterJob(jobIdRef.current);
+            jobIdRef.current = null;
+          }
+        },
+        onError: (e) => {
+          handleError(e);
+          if (jobIdRef.current) {
+            session.unregisterJob(jobIdRef.current);
+            jobIdRef.current = null;
+          }
+        },
       },
     );
     cancelRef.current = cancel;
+    session.registerJob({
+      id: handleId,
+      slug: 'intelli-search',
+      workspace: 'search',
+      startedAt: Date.now(),
+      cancel: () => {
+        cancel();
+        // Best-effort backend cancel — frees the orchestrator task slot.
+        void cancelSearch(handleId).catch(() => {});
+      },
+    });
+  }
+
+  /** "Clear search" — wipes query/results, aborts any in-flight SSE, and
+   *  bumps the session version so late events from the previous search are
+   *  ignored. Filters are preserved. */
+  function clearSearch() {
+    cancelRef.current?.();
+    cancelRef.current = null;
+    if (jobIdRef.current) {
+      // Best-effort — free the backend orchestrator slot in real time.
+      void cancelSearch(jobIdRef.current).catch(() => {});
+      session.unregisterJob(jobIdRef.current);
+      jobIdRef.current = null;
+    }
+    session.resetSolution();
+    dispatch({ type: 'CLEAR' });
   }
 
   function handleError(e: unknown) {
@@ -235,9 +458,25 @@ export default function Demo() {
           with the page header (title, stack chips) and outer Overview/Demo/
           Architecture/API tab strip. No horizontal breakout. */}
       <div>
-      <TabsList>
+      <TabsList className="flex-wrap">
         <TabsTrigger value="search">Search</TabsTrigger>
         <TabsTrigger value="raw">API response</TabsTrigger>
+        <div className="ml-auto self-center">
+          <button
+            type="button"
+            onClick={clearSearch}
+            disabled={
+              !state.query &&
+              state.status === 'idle' &&
+              state.response == null &&
+              state.error == null
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground/85 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            title="Cancel any in-flight search and clear the query, results, and API trace. Filters are kept."
+          >
+            <X className="h-3 w-3" /> Clear search
+          </button>
+        </div>
       </TabsList>
 
       {/* ───── Search ───── */}
@@ -341,8 +580,12 @@ export default function Demo() {
                               key={q}
                               type="button"
                               onClick={() => {
+                                // Populate the search bar only — the user
+                                // explicitly clicks Search to fire. This
+                                // lets them flip between suggestions
+                                // without accidentally launching a search
+                                // for the first one they tapped.
                                 dispatch({ type: 'SET_QUERY', q });
-                                requestAnimationFrame(() => run());
                               }}
                               className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground/85 transition hover:border-foreground/40 hover:bg-muted/60"
                             >

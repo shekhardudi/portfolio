@@ -9,7 +9,7 @@ export function SiteHeader() {
           <Cpu className="h-5 w-5 text-blue-400" />
           <span>shekharlabs</span>
         </Link>
-        <nav className="flex items-center gap-5 text-sm">
+        <nav className="flex items-center gap-4 text-sm sm:gap-5">
           <Link className="text-foreground/80 hover:text-foreground" href="/#solutions">
             Solutions
           </Link>

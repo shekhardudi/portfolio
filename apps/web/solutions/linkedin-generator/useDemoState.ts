@@ -11,6 +11,32 @@ import type {
 } from './client';
 
 const STORAGE_KEY = 'linkedin-demo-v2';
+// Runtime / in-flight fields live in sessionStorage so they're per-tab
+// instead of shared across every browser tab on the origin. Without this
+// split, opening a second tab while a scout/studio job is running causes
+// both tabs to poll the same job_id and race on writes — leading to
+// "completed with no results" snapshots overwriting good ones.
+const RUNTIME_STORAGE_KEY = 'linkedin-runtime-v1';
+
+// Fields that describe an in-flight job. These persist across in-tab
+// navigation (sessionStorage survives route changes) but never leak to
+// other tabs. Keep this list and the persistence effect in sync.
+const RUNTIME_FIELDS = [
+  'scout_job_id',
+  'scout_status',
+  'scout_progress_step',
+  'scout_progress_total',
+  'scout_progress_message',
+  'scout_progress_module',
+  'scout_callbacks',
+  'scout_error',
+  'current_job_id',
+  'job_status',
+  'job_error',
+  'stage',
+  'events',
+  'started_at_ms',
+] as const satisfies ReadonlyArray<keyof DemoState>;
 
 export interface GeneratedImage {
   /** Returned by /images. */
@@ -148,6 +174,7 @@ export type DemoAction =
       briefing?: ScoutBriefing | null;
     }
   | { type: 'SCOUT_FAIL'; error: string }
+  | { type: 'SCOUT_CANCEL' }
   // Posts
   | { type: 'JOB_START'; job_id: string }
   | {
@@ -157,6 +184,7 @@ export type DemoAction =
       events?: AgentEvent[];
     }
   | { type: 'JOB_FAIL'; error: string }
+  | { type: 'JOB_CANCEL' }
   | {
       type: 'JOB_RESULT';
       run_id: string;
@@ -166,7 +194,9 @@ export type DemoAction =
       cost?: CostBreakdown | null;
     }
   | { type: 'IMAGE_ADDED'; image: GeneratedImage; cost?: CostBreakdown | null }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'RESET_SCOUT' }
+  | { type: 'RESET_STUDIO' };
 
 function reducer(s: DemoState, a: DemoAction): DemoState {
   switch (a.type) {
@@ -229,6 +259,17 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
         scout_status: 'failed',
         scout_error: a.error,
       };
+    case 'SCOUT_CANCEL':
+      // User-initiated cancel — distinct from a failure. Briefing (if any
+      // partial) and configured inputs are kept; only the in-flight markers
+      // flip so `busy` becomes false and the action button moves from
+      // "Cancel" to "Reset Scout".
+      return {
+        ...s,
+        scout_status: 'cancelled',
+        scout_error: null,
+        scout_progress_message: '',
+      };
 
     case 'JOB_START':
       return {
@@ -256,6 +297,11 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
       };
     case 'JOB_FAIL':
       return { ...s, job_status: 'failed', job_error: a.error };
+    case 'JOB_CANCEL':
+      // User-initiated cancel — keep the partial draft / events for
+      // inspection but flip out of the busy state so the action button
+      // moves from "Cancel" to "Reset Studio".
+      return { ...s, job_status: 'cancelled', job_error: null };
     case 'JOB_RESULT':
       return {
         ...s,
@@ -276,6 +322,57 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
 
     case 'RESET':
       return { ...INITIAL };
+
+    case 'RESET_SCOUT':
+      // Scout-only reset: drop scout outputs + active job. Inputs the user
+      // configured (selected modules, time window) are preserved so the
+      // next run reuses them. Studio slice is untouched.
+      return {
+        ...s,
+        pulse_md: '',
+        pulse_done: false,
+        scout_job_id: null,
+        scout_status: 'idle',
+        scout_progress_step: 0,
+        scout_progress_total: 1,
+        scout_progress_message: '',
+        scout_progress_module: '',
+        scout_callbacks: [],
+        scout_error: null,
+        scout_briefing: null,
+        scout_cost: null,
+        // Drop the "Imported from Scout" provenance — there's no scout
+        // output backing it any more.
+        imported_topic: '',
+      };
+
+    case 'RESET_STUDIO':
+      // Studio-only reset: drop draft form + generated post + images + active
+      // job + cost. Scout slice is untouched. Inputs go back to INITIAL
+      // defaults so the form reads as a fresh draft, not stale text.
+      return {
+        ...s,
+        topic: INITIAL.topic,
+        leader_angle: INITIAL.leader_angle,
+        author_vibe: INITIAL.author_vibe,
+        audience: INITIAL.audience,
+        imported_topic: '',
+        current_job_id: null,
+        job_status: 'idle',
+        job_error: null,
+        stage: 'queued',
+        events: [],
+        started_at_ms: null,
+        run_id: '',
+        post_draft: '',
+        image_prompt: '',
+        emotional_beats: [],
+        images: [],
+        image_quality: INITIAL.image_quality,
+        crew_done: false,
+        cost: null,
+      };
+
     default:
       return s;
   }
@@ -284,31 +381,51 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
 function load(): DemoState {
   if (typeof window === 'undefined') return INITIAL;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return INITIAL;
-    const parsed = JSON.parse(raw) as Partial<DemoState>;
-    const safeScoutCallbacks = Array.isArray(parsed.scout_callbacks) ? parsed.scout_callbacks : [];
-    const safeScoutProgressMessage = typeof parsed.scout_progress_message === 'string'
-      ? parsed.scout_progress_message
-      : '';
-    const safeScoutProgressModule = typeof parsed.scout_progress_module === 'string'
-      ? parsed.scout_progress_module
-      : '';
-    // Don't restore in-flight job state — those job IDs may be gone server-side.
+    const rawAuthored = window.localStorage.getItem(STORAGE_KEY);
+    const authored = rawAuthored
+      ? (JSON.parse(rawAuthored) as Partial<DemoState>)
+      : {};
+
+    // Drop any runtime fields a legacy localStorage blob may still carry.
+    // Runtime now lives in sessionStorage; we *do not* migrate the values
+    // because resuming another tab's job on first mount of a fresh tab is
+    // exactly the bug this split fixes.
+    for (const f of RUNTIME_FIELDS) {
+      delete (authored as Record<string, unknown>)[f];
+    }
+
+    let runtime: Partial<DemoState> = {};
+    try {
+      const rawRuntime = window.sessionStorage.getItem(RUNTIME_STORAGE_KEY);
+      if (rawRuntime) runtime = JSON.parse(rawRuntime) as Partial<DemoState>;
+    } catch {
+      /* ignore */
+    }
+
+    const safeScoutCallbacks = Array.isArray(runtime.scout_callbacks)
+      ? runtime.scout_callbacks
+      : [];
+    const safeScoutProgressMessage =
+      typeof runtime.scout_progress_message === 'string'
+        ? runtime.scout_progress_message
+        : '';
+    const safeScoutProgressModule =
+      typeof runtime.scout_progress_module === 'string'
+        ? runtime.scout_progress_module
+        : '';
+
+    // Authored fields override INITIAL; runtime overrides last so an
+    // in-tab navigation picks the polling loop back up via the mount-resume
+    // effects in ScoutPanel / ProductionStudio. A fresh tab finds
+    // sessionStorage empty and starts idle.
     return {
       ...INITIAL,
-      ...parsed,
+      ...authored,
+      ...runtime,
       scout_callbacks: safeScoutCallbacks,
       scout_progress_message: safeScoutProgressMessage,
       scout_progress_module: safeScoutProgressModule,
-      current_job_id: null,
-      job_status: 'idle',
-      job_error: null,
-      events: [],
-      started_at_ms: null,
-      scout_job_id: null,
-      scout_status: 'idle',
-      scout_error: null,
+      events: Array.isArray(runtime.events) ? runtime.events : [],
     };
   } catch {
     return INITIAL;
@@ -319,9 +436,11 @@ export function useDemoState() {
   const [state, dispatch] = useReducer(reducer, undefined, load);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
-      // Persist user-authored fields + completed outputs only.
-      const persistable: Partial<DemoState> = {
+      // Authored fields + completed outputs live in localStorage so drafts
+      // survive tab close. New tabs are welcome to read this.
+      const authored: Partial<DemoState> = {
         topic: state.topic,
         leader_angle: state.leader_angle,
         author_vibe: state.author_vibe,
@@ -346,7 +465,29 @@ export function useDemoState() {
         scout_cost: state.scout_cost,
         imported_topic: state.imported_topic,
       };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(authored));
+
+      // Runtime / in-flight fields live in sessionStorage — per-tab.
+      const runtime: Partial<DemoState> = {
+        scout_job_id: state.scout_job_id,
+        scout_status: state.scout_status,
+        scout_progress_step: state.scout_progress_step,
+        scout_progress_total: state.scout_progress_total,
+        scout_progress_message: state.scout_progress_message,
+        scout_progress_module: state.scout_progress_module,
+        scout_callbacks: state.scout_callbacks,
+        scout_error: state.scout_error,
+        current_job_id: state.current_job_id,
+        job_status: state.job_status,
+        job_error: state.job_error,
+        stage: state.stage,
+        events: state.events,
+        started_at_ms: state.started_at_ms,
+      };
+      window.sessionStorage.setItem(
+        RUNTIME_STORAGE_KEY,
+        JSON.stringify(runtime),
+      );
     } catch {
       /* quota / disabled — drop persistence */
     }
@@ -357,5 +498,14 @@ export function useDemoState() {
 
 export function clearDemoState() {
   if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.sessionStorage.removeItem(RUNTIME_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }

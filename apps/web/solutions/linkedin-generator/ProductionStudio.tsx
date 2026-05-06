@@ -6,40 +6,63 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
+  RotateCcw,
   Sparkles,
+  Square,
   Wand2,
 } from 'lucide-react';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
   EndpointMissingError,
+  cancelPost,
   getPost,
   startPost,
   type AgentEvent,
   type PostJob,
   type PostStage,
+  type SessionTag,
 } from './client';
 import EventStream from './EventStream';
 import CostTracker from './CostTracker';
 import type { DemoAction, DemoState } from './useDemoState';
+import {
+  useSiteSession,
+  useSolutionSession,
+} from '@/lib/session/SessionProvider';
 
 interface Props {
   state: DemoState;
   dispatch: React.Dispatch<DemoAction>;
   onCompleted: () => void;
+  /** Reset the entire studio workspace (draft + post + images + cached job).
+   *  Owned by Demo.tsx because resetting also bumps the session workspace
+   *  version. */
+  onReset: () => void;
 }
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 20 * 60_000; // 20 minutes — large multi-agent runs can be slow
 const POLL_MAX_CONSECUTIVE_ERRORS = 30; // tolerate transient network blips during long runs
 
-export default function ProductionStudio({ state, dispatch, onCompleted }: Props) {
+export default function ProductionStudio({ state, dispatch, onCompleted, onReset }: Props) {
   const busy = state.job_status === 'queued' || state.job_status === 'running';
   const [unavailable, setUnavailable] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const cancelledRef = useRef(false);
   /** Guards against a remount-resume race spawning two concurrent loops. */
   const pollingRef = useRef(false);
+
+  // Session integration: every API call is tagged with the current studio
+  // workspace version. After a "Reset Studio" click the version bumps and
+  // any in-flight poll loops fail `shouldAccept(...)` → results dropped.
+  const session = useSolutionSession('linkedin-generator');
+  const { anonymousVisitId } = useSiteSession();
+  const studioVersion = session.state.workspaceVersions?.studio ?? 1;
+  const tag = (): SessionTag => ({
+    sessionVersion: studioVersion,
+    anonymousVisitId,
+  });
 
   // Tick a clock for the stage timer.
   useEffect(() => {
@@ -60,7 +83,20 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
       !!jobId && (state.job_status === 'queued' || state.job_status === 'running');
     if (!inFlight) return;
     cancelledRef.current = false;
-    void pollUntilDone(jobId);
+    // Resume polling under the current studio version. If the user reset
+    // Studio while we were away, the first tick fails shouldAccept() and
+    // the loop bails silently.
+    void pollUntilDone(jobId, studioVersion);
+    session.setStatus('studio_running');
+    session.registerJob({
+      id: jobId,
+      slug: 'linkedin-generator',
+      workspace: 'studio',
+      startedAt: Date.now(),
+      cancel: () => {
+        void cancelPost(jobId, tag());
+      },
+    });
     // Mount-only resume: deliberately empty deps; state at mount is enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -73,18 +109,32 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
     if (busy) return;
     setUnavailable(false);
     cancelledRef.current = false;
+    const versionAtStart = studioVersion;
     try {
-      const ack = await startPost({
-        topic: state.topic,
-        leader_angle: state.leader_angle,
-        author_name: state.author_name,
-        author_title: state.author_title,
-        author_location: state.author_location,
-        author_vibe: state.author_vibe,
-        audience: state.audience,
-      });
+      const ack = await startPost(
+        {
+          topic: state.topic,
+          leader_angle: state.leader_angle,
+          author_name: state.author_name,
+          author_title: state.author_title,
+          author_location: state.author_location,
+          author_vibe: state.author_vibe,
+          audience: state.audience,
+        },
+        tag(),
+      );
       dispatch({ type: 'JOB_START', job_id: ack.job_id });
-      void pollUntilDone(ack.job_id);
+      session.setStatus('studio_running');
+      session.registerJob({
+        id: ack.job_id,
+        slug: 'linkedin-generator',
+        workspace: 'studio',
+        startedAt: Date.now(),
+        cancel: () => {
+          void cancelPost(ack.job_id, tag());
+        },
+      });
+      void pollUntilDone(ack.job_id, versionAtStart);
     } catch (e) {
       if (e instanceof EndpointMissingError) setUnavailable(true);
       else
@@ -95,7 +145,26 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
     }
   }
 
-  async function pollUntilDone(jobId: string) {
+  /** User-initiated cancel of an in-flight production run. Stops the local
+   *  poll loop, fires a best-effort backend cancel, and flips the panel
+   *  out of the busy state. The action button (rendered next to Generate
+   *  Post) re-labels from "Cancel" to "Reset Studio" so the user can clear
+   *  the workspace on a second click if they want to. */
+  async function cancel() {
+    const jobId = state.current_job_id;
+    if (!jobId) return;
+    cancelledRef.current = true;
+    dispatch({ type: 'JOB_CANCEL' });
+    session.unregisterJob(jobId);
+    session.setStatus('ready');
+    try {
+      await cancelPost(jobId, tag());
+    } catch {
+      /* best effort — local state is already cancelled */
+    }
+  }
+
+  async function pollUntilDone(jobId: string, versionAtStart: number) {
     // Single in-flight loop only — protects against a remount-resume race
     // where both the explicit run() call and the recovery effect could try
     // to start polling.
@@ -106,19 +175,31 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
     try {
       while (!cancelledRef.current && Date.now() < deadline) {
         try {
-          const job = await getPost(jobId);
+          const job = await getPost(jobId, tag());
           consecutiveErrors = 0;
+          // Stale-result guard. If the user reset Studio mid-run, the
+          // version moved on and we drop the tick silently. The registry
+          // already cancelled this job at reset time.
+          if (!session.shouldAccept(versionAtStart, 'studio')) {
+            return;
+          }
           applyJob(job);
           if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
             if (job.status === 'completed' && job.result) {
               onCompleted();
             }
+            session.unregisterJob(jobId);
+            session.setStatus(
+              job.status === 'failed' ? 'error' : 'ready',
+            );
             return;
           }
         } catch (e) {
           // 404 means the server forgot the job — fatal.
           if (e instanceof ApiError && e.status === 404) {
             dispatch({ type: 'JOB_FAIL', error: 'Job lost server-side' });
+            session.unregisterJob(jobId);
+            session.setStatus('error');
             return;
           }
           // Everything else (timeouts, 5xx, AbortError, network) is treated as
@@ -131,6 +212,8 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
               type: 'JOB_FAIL',
               error: 'Lost connection to backend — please retry.',
             });
+            session.unregisterJob(jobId);
+            session.setStatus('error');
             return;
           }
         }
@@ -138,6 +221,8 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
       }
       if (!cancelledRef.current) {
         dispatch({ type: 'JOB_FAIL', error: 'Run exceeded the 20 minute polling window.' });
+        session.unregisterJob(jobId);
+        session.setStatus('error');
       }
     } finally {
       pollingRef.current = false;
@@ -286,18 +371,46 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
           >
             {busy ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Running…
+                <Loader2 className="h-4 w-4 animate-spin" /> Generating…
               </>
             ) : showCompletion ? (
               <>
-                <Wand2 className="h-4 w-4" /> Run again
+                <Wand2 className="h-4 w-4" /> Generate again
               </>
             ) : (
               <>
-                <Wand2 className="h-4 w-4" /> Run Production Crew
+                <Wand2 className="h-4 w-4" /> Generate Post
               </>
             )}
           </button>
+
+          {/* Combined cancel/reset action — same pattern as the Scout panel.
+              Busy → "Cancel" (destructive accent) aborts the run without
+              clearing data. Otherwise → "Reset Studio" clears the
+              workspace. Same slot, different colors so the two actions are
+              visually distinguishable. */}
+          {busy ? (
+            <button
+              type="button"
+              onClick={() => { void cancel(); }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/15"
+              title="Stop the production run. Partial output is kept; click Reset Studio to clear."
+            >
+              <Square className="h-3.5 w-3.5 fill-current" /> Cancel
+            </button>
+          ) : (
+            (state.current_job_id || showCompletion || failed || state.job_status === 'cancelled') && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground/80 transition hover:bg-muted"
+                title="Clear the draft, post and images. Scout briefing is kept."
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Reset Studio
+              </button>
+            )
+          )}
+
           {state.current_job_id && (
             <span className="text-[11px] text-foreground/75">
               job <code className="font-mono text-foreground/80">{state.current_job_id.slice(0, 8)}</code>

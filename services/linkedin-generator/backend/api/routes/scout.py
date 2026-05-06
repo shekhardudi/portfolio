@@ -35,6 +35,25 @@ def get_scout(job_id: str, store: JobStore = Depends(get_job_store)) -> ScoutJob
     return _to_schema(job)
 
 
+@router.delete("/{job_id}", status_code=202)
+def cancel_scout(
+    job_id: str,
+    store: JobStore = Depends(get_job_store),
+    runner: JobRunner = Depends(get_job_runner),
+) -> dict[str, Any]:
+    """Best-effort cancel — frees the worker slot in real time.
+
+    Returns 202 even when the job is already terminal so the client doesn't
+    need to special-case races between its own reset click and a job that
+    just finished server-side.
+    """
+    job = store.get(job_id)
+    if not job or job.kind != "scout":
+        raise HTTPException(status_code=404, detail="scout job not found")
+    cancelled = runner.cancel(job_id)
+    return {"job_id": job_id, "cancelled": cancelled, "status": store.get(job_id).status.value if store.get(job_id) else "unknown"}
+
+
 def _to_schema(job: Job) -> ScoutJob:
     result = None
     if job.result:

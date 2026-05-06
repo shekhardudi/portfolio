@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/toaster';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
+  cancelChat,
   chat,
   decideApproval,
   listApprovals,
@@ -26,39 +27,139 @@ import ApprovalCard from './ApprovalCard';
 import { AssistantAvatar, UserAvatar } from './Avatars';
 import { INTEGRATIONS } from './integrations';
 import { TIPS } from './guide';
+import {
+  useSolutionSession,
+} from '@/lib/session/SessionProvider';
 
 function newSessionId() {
   return `demo-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+// Persist chat surface state across route navigation so the user can move
+// between solutions mid-conversation and come back without losing context.
+// We deliberately only persist the chat history, the active personas, the
+// inner tab, and the session_id — NOT `busy` (the in-flight chat call can't
+// be re-attached, so we always rehydrate to idle and surface a soft hint).
+const STORAGE_KEY = 'agentic-hr-demo-v1';
+
+type PersistedShape = {
+  innerTab: 'chat' | 'approvals';
+  sessionId: string;
+  employeeEmail: string;
+  managerEmail: string;
+  messages: ChatMessage[];
+  wasBusy: boolean;
+  _savedAt: number;
+};
+
+function loadPersisted(): Partial<PersistedShape> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedShape;
+  } catch {
+    return null;
+  }
+}
+
 export default function Demo() {
-  const [innerTab, setInnerTab] = useState<'chat' | 'approvals'>('chat');
+  const persisted = typeof window !== 'undefined' ? loadPersisted() : null;
+
+  const [innerTab, setInnerTab] = useState<'chat' | 'approvals'>(
+    persisted?.innerTab ?? 'chat',
+  );
 
   // ── Chat state ──
-  const [employee, setEmployee] = useState<Persona>(DEFAULT_EMPLOYEE);
-  const [sessionId, setSessionId] = useState(newSessionId);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => welcomeMessages());
+  const [employee, setEmployee] = useState<Persona>(() => {
+    const match = persisted?.employeeEmail
+      ? PERSONAS.find((p) => p.email === persisted.employeeEmail)
+      : undefined;
+    return match ?? DEFAULT_EMPLOYEE;
+  });
+  const [sessionId, setSessionId] = useState(() => persisted?.sessionId ?? newSessionId());
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    Array.isArray(persisted?.messages) && persisted!.messages.length > 0
+      ? persisted!.messages
+      : welcomeMessages(),
+  );
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    persisted?.wasBusy
+      ? 'Previous request was interrupted when you navigated away — try again.'
+      : null,
+  );
   const [showGuideDock, setShowGuideDock] = useState(true);
   const [guideTab, setGuideTab] = useState<'examples' | 'tips'>('examples');
   const [guideTabTouched, setGuideTabTouched] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Approvals state ──
-  const [manager, setManager] = useState<Persona>(DEFAULT_MANAGER);
+  const [manager, setManager] = useState<Persona>(() => {
+    const match = persisted?.managerEmail
+      ? MANAGERS.find((p) => p.email === persisted.managerEmail)
+      : undefined;
+    return match ?? DEFAULT_MANAGER;
+  });
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [approvalsLoading, setApprovalsLoading] = useState(false);
   const { show: toast } = useToast();
   const pendingApprovalCount = approvals.filter((a) => a.status === 'pending').length;
 
+  // Session integration. Drives the navbar pill and home-card status badge.
+  const session = useSolutionSession('agentic-hr');
+  // Stable per-conversation handle for the registry. Re-rotates on
+  // newConversation / changeEmployee.
+  const chatHandleId = useRef(`hr-chat-${sessionId}`);
+  useEffect(() => {
+    chatHandleId.current = `hr-chat-${sessionId}`;
+  }, [sessionId]);
+
+  // Drive the per-solution status: thinking > approval_pending > error > ready.
+  // The order matters when both a chat round-trip is in flight AND there's a
+  // pending approval — the spinner takes priority since it's the live state.
+  useEffect(() => {
+    if (busy) {
+      session.setStatus('thinking');
+    } else if (error) {
+      session.setStatus('error');
+    } else if (pendingApprovalCount > 0) {
+      session.setStatus('approval_pending');
+    } else {
+      session.setStatus('ready');
+    }
+  }, [busy, error, pendingApprovalCount, session]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, busy]);
 
-  // Reset chat when persona changes
+  // Persist the chat surface so navigating between solutions mid-conversation
+  // doesn't reset the UI. `busy` is recorded so a rehydration after an
+  // unrecoverable in-flight chat shows the soft "interrupted" hint above.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const blob: PersistedShape = {
+        innerTab,
+        sessionId,
+        employeeEmail: employee.email,
+        managerEmail: manager.email,
+        messages,
+        wasBusy: busy,
+        _savedAt: Date.now(),
+      };
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
+    } catch {
+      /* quota / disabled — drop persistence */
+    }
+  }, [innerTab, sessionId, employee.email, manager.email, messages, busy]);
+
+  // Reset chat when persona changes — bumps version so any in-flight chat
+  // reply from the previous persona is dropped.
   function changeEmployee(p: Persona) {
+    session.resetSolution();
     setEmployee(p);
     setSessionId(newSessionId());
     setMessages(welcomeMessages(p));
@@ -68,6 +169,7 @@ export default function Demo() {
   }
 
   function newConversation() {
+    session.resetSolution();
     setSessionId(newSessionId());
     setMessages(welcomeMessages(employee));
     setGuideTab('examples');
@@ -80,12 +182,34 @@ export default function Demo() {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setBusy(true);
     setError(null);
+    // Snapshot the version at request time. If the user starts a new
+    // conversation or switches persona while we're awaiting the reply,
+    // shouldAccept(...) returns false and the response is dropped silently.
+    const versionAtStart = session.state.version;
+    const handleId = chatHandleId.current;
+    session.registerJob({
+      id: handleId,
+      slug: 'agentic-hr',
+      workspace: 'chat',
+      startedAt: Date.now(),
+      // The chat round-trip is wrapped server-side as an asyncio.Task keyed
+      // by session_id. DELETE /chat/{session_id} cancels it and frees the
+      // LangGraph worker in real time — fired when the user resets the
+      // conversation, switches persona, or navigates to another solution.
+      cancel: () => {
+        void cancelChat(sessionId).catch(() => {});
+      },
+    });
     try {
       const res = await chat({
         session_id: sessionId,
         message: text,
         employee_email: employee.email,
       });
+      if (!session.shouldAccept(versionAtStart)) {
+        // User reset / switched persona while we were awaiting the reply.
+        return;
+      }
       setMessages((m) => [
         ...m,
         {
@@ -100,8 +224,10 @@ export default function Demo() {
       // Pending approvals may have been created — refresh list quietly.
       refreshApprovals();
     } catch (e) {
+      if (!session.shouldAccept(versionAtStart)) return;
       setError(e instanceof ApiError ? `${e.status} — ${e.body}` : (e as Error).message);
     } finally {
+      session.unregisterJob(handleId);
       setBusy(false);
     }
   }

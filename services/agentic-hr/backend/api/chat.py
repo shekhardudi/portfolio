@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 
@@ -11,6 +12,15 @@ from guardrails.policy import GuardrailPolicy, GuardrailAction
 
 router = APIRouter()
 log = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# In-flight chat task registry. Keyed by ``session_id`` so DELETE
+# /chat/{session_id} can cancel a long-running LangGraph invocation and
+# free the worker slot in real time. A given session_id can only have one
+# in-flight chat at a time — starting a second one cancels the first.
+# ---------------------------------------------------------------------------
+_INFLIGHT_CHATS: dict[str, asyncio.Task] = {}
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -118,7 +128,26 @@ async def chat(request: ChatRequest):
 
     try:
         graph = get_compiled_graph()
-        final_state = await graph.ainvoke(initial_state)
+        # Wrap the invocation as an asyncio.Task so DELETE /chat/{session_id}
+        # can cancel it via task.cancel(). If a prior task for this session_id
+        # is still running (race — the user fired two messages back-to-back),
+        # cancel it first so we don't leak workers.
+        prior = _INFLIGHT_CHATS.get(session_id)
+        if prior is not None and not prior.done():
+            prior.cancel()
+
+        invoke_task = asyncio.create_task(graph.ainvoke(initial_state))
+        _INFLIGHT_CHATS[session_id] = invoke_task
+        try:
+            final_state = await invoke_task
+        finally:
+            # Drop the registry entry only if it still points at our task —
+            # avoid clobbering a newer task that took the slot.
+            if _INFLIGHT_CHATS.get(session_id) is invoke_task:
+                _INFLIGHT_CHATS.pop(session_id, None)
+    except asyncio.CancelledError:
+        log.info("Chat cancelled by client | session=%s", session_id)
+        raise HTTPException(status_code=499, detail="Request cancelled.")
     except Exception as e:
         log.error("Graph execution failed | session=%s | error=%s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -139,3 +168,22 @@ async def chat(request: ChatRequest):
         request_id=final_state.get("request_id"),
         status=status,
     )
+
+
+@router.delete("/chat/{session_id}", status_code=202)
+async def cancel_chat(session_id: str) -> dict:
+    """Cancel an in-flight LangGraph chat invocation for ``session_id``.
+
+    Returns 202 even when no task is found so the client doesn't need to
+    race against a server that just finished. The cancelled task will
+    propagate ``CancelledError`` out of ``await graph.ainvoke(...)``,
+    freeing the worker slot.
+    """
+    task = _INFLIGHT_CHATS.get(session_id)
+    if task is None:
+        return {"session_id": session_id, "cancelled": False, "reason": "not_found"}
+    if task.done():
+        return {"session_id": session_id, "cancelled": False, "reason": "already_done"}
+    task.cancel()
+    log.info("Chat cancel requested | session=%s", session_id)
+    return {"session_id": session_id, "cancelled": True}

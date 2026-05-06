@@ -22,6 +22,67 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
+# ---------------------------------------------------------------------------
+# Streaming-search session registry. Keyed by client-supplied ``search_id``.
+#
+# Each session owns a *detached* background ``asyncio.Task`` plus a buffer of
+# progress events. SSE clients attach to the session, replay buffered events,
+# then tail live ones. Critically, the task is **not** cancelled when a client
+# disconnects — only when DELETE /api/search/cancel/{search_id} is called or
+# after a TTL post-completion. This is what lets the user navigate away,
+# come back, and pick up the same in-flight search exactly where it left off.
+# ---------------------------------------------------------------------------
+
+_SESSION_TTL_SECONDS = 300        # keep completed sessions around for replay
+_MAX_SESSIONS = 256               # hard cap; oldest completed get evicted
+
+
+class SearchSession:
+    """Buffered, multi-attach view over one in-flight orchestrator search."""
+
+    def __init__(self, search_id: str) -> None:
+        self.search_id = search_id
+        self.events: List[Dict[str, Any]] = []
+        self.signal = asyncio.Event()
+        self.completed = False
+        self.task: Optional[asyncio.Task] = None
+        self.created_at = _time.monotonic()
+        self.completed_at: Optional[float] = None
+
+    def push(self, event: Dict[str, Any]) -> None:
+        self.events.append(event)
+        self.signal.set()
+
+    def finish(self, terminal: Dict[str, Any]) -> None:
+        self.events.append(terminal)
+        self.completed = True
+        self.completed_at = _time.monotonic()
+        self.signal.set()
+
+
+_SEARCH_SESSIONS: Dict[str, SearchSession] = {}
+
+
+def _gc_sessions() -> None:
+    """Evict completed sessions older than the TTL, plus any overflow."""
+    now = _time.monotonic()
+    expired = [
+        sid
+        for sid, s in _SEARCH_SESSIONS.items()
+        if s.completed and s.completed_at and (now - s.completed_at) > _SESSION_TTL_SECONDS
+    ]
+    for sid in expired:
+        _SEARCH_SESSIONS.pop(sid, None)
+    if len(_SEARCH_SESSIONS) > _MAX_SESSIONS:
+        # Drop oldest completed first.
+        ordered = sorted(
+            (s for s in _SEARCH_SESSIONS.values() if s.completed),
+            key=lambda s: s.completed_at or 0,
+        )
+        for s in ordered[: len(_SEARCH_SESSIONS) - _MAX_SESSIONS]:
+            _SEARCH_SESSIONS.pop(s.search_id, None)
+
+
 # ============================================================================
 # Request Models
 # ============================================================================
@@ -47,6 +108,13 @@ class SearchRequest(BaseModel):
     page: int = Field(1, ge=1, description="Page number")
     include_reasoning: bool = Field(True, description="Include explanation for results")
     include_trace: bool = Field(False, description="Include detailed trace information")
+    search_id: Optional[str] = Field(
+        None,
+        description=(
+            "Optional client-supplied id used to cancel a streaming search via "
+            "DELETE /api/search/cancel/{search_id}. Echoed in observability logs."
+        ),
+    )
     filters: Optional[UserFilters] = Field(
         None,
         description=(
@@ -265,30 +333,61 @@ async def intelligent_search_stream(
       {"type": "progress", "phase": "...", "message": "..."}
       {"type": "results", "data": { ...SearchResponse... }}
       {"type": "error", "detail": "..."}
+
+    Reconnect semantics: if the request body's ``search_id`` matches an
+    in-flight (or recently-completed) session, the endpoint replays the
+    buffered events and then tails any new ones. The underlying orchestrator
+    task is never cancelled by a client disconnect — only by an explicit
+    DELETE /api/search/cancel/{search_id} or by aging out post-completion.
+    This allows users to navigate away mid-search and return to live progress.
     """
-    loop = asyncio.get_running_loop()
-    event_queue: asyncio.Queue = asyncio.Queue()
+
+    cancel_key = request.search_id or trace_id
+
+    # ---- Reconnect path: attach to an existing session ---------------------
+    existing = _SEARCH_SESSIONS.get(cancel_key) if cancel_key else None
+    if existing is not None:
+        async def _attach_generator(session: SearchSession):
+            cursor = 0
+            # Replay anything buffered before the client (re)attached.
+            while cursor < len(session.events):
+                yield "data: " + json.dumps(session.events[cursor]) + "\n\n"
+                cursor += 1
+            # Tail live events until the session is complete and drained.
+            while not (session.completed and cursor >= len(session.events)):
+                if cursor >= len(session.events):
+                    session.signal.clear()
+                    try:
+                        await asyncio.wait_for(session.signal.wait(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        yield ": heartbeat\n\n"
+                        continue
+                while cursor < len(session.events):
+                    yield "data: " + json.dumps(session.events[cursor]) + "\n\n"
+                    cursor += 1
+
+        return StreamingResponse(
+            _attach_generator(existing),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # ---- New search path ---------------------------------------------------
+    _gc_sessions()
+    session = SearchSession(search_id=cancel_key or f"anon-{_time.monotonic()}")
 
     def _progress_cb(phase: str, message: str) -> None:
-        """Progress sink — called from the same loop the search runs on.
+        session.push({"type": "progress", "phase": phase, "message": message})
 
-        ``put_nowait`` is safe because the queue is unbounded and we are
-        already on the event-loop thread. No cross-thread bridging needed.
-        """
+    orchestrator = get_search_orchestrator()
+    user_filter_dict = request.filters.model_dump(exclude_none=True) if request.filters else {}
+
+    async def _run_search() -> None:
+        # Kick off with an explicit "started" event so reconnects always see
+        # at least one buffered frame.
+        session.push({"type": "progress", "phase": "started", "message": "Search started…"})
         try:
-            event_queue.put_nowait({"type": "progress", "phase": phase, "message": message})
-        except Exception:
-            pass  # Never let a SSE failure break the search.
-
-    async def _event_generator():
-        yield "data: " + json.dumps({"type": "progress", "phase": "started", "message": "Search started…"}) + "\n\n"
-
-        orchestrator = get_search_orchestrator()
-        user_filter_dict = request.filters.model_dump(exclude_none=True) if request.filters else {}
-
-        # Run the search as a regular task on this loop — no thread pool.
-        search_task = asyncio.create_task(
-            orchestrator.search(
+            orch_response = await orchestrator.search(
                 request.query,
                 request.limit,
                 request.page,
@@ -297,24 +396,6 @@ async def intelligent_search_stream(
                 user_filter_dict,
                 progress_callback=_progress_cb,
             )
-        )
-
-        # Drain progress events while search runs.
-        while not search_task.done():
-            try:
-                event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
-                yield "data: " + json.dumps(event) + "\n\n"
-            except asyncio.TimeoutError:
-                # Heartbeat keeps connection alive during long agent runs.
-                yield ": heartbeat\n\n"
-
-        # Drain any remaining events.
-        while not event_queue.empty():
-            event = event_queue.get_nowait()
-            yield "data: " + json.dumps(event) + "\n\n"
-
-        try:
-            orch_response = await search_task
             search_response = SearchResponse(
                 query=request.query,
                 results=[CompanyResult(**r) for r in orch_response.results],
@@ -329,19 +410,70 @@ async def intelligent_search_stream(
                 },
                 status="success",
             )
-            yield "data: " + json.dumps({"type": "results", "data": search_response.model_dump()}) + "\n\n"
+            session.finish({"type": "results", "data": search_response.model_dump()})
+        except asyncio.CancelledError:
+            logger.info("intelligent_search_stream_cancelled", search_id=session.search_id)
+            session.finish({"type": "error", "detail": "cancelled"})
+            raise
         except Exception as exc:
-            logger.error("intelligent_search_stream_failed", error=str(exc), query=request.query[:100])
-            yield "data: " + json.dumps({"type": "error", "detail": "Search failed."}) + "\n\n"
+            logger.error(
+                "intelligent_search_stream_failed",
+                error=str(exc),
+                query=request.query[:100],
+            )
+            session.finish({"type": "error", "detail": "Search failed."})
+
+    # Detached task: lives independently of any single SSE client.
+    session.task = asyncio.create_task(_run_search())
+    if cancel_key:
+        _SEARCH_SESSIONS[cancel_key] = session
+
+    async def _live_generator(session: SearchSession):
+        cursor = 0
+        while not (session.completed and cursor >= len(session.events)):
+            if cursor >= len(session.events):
+                session.signal.clear()
+                try:
+                    await asyncio.wait_for(session.signal.wait(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+            while cursor < len(session.events):
+                yield "data: " + json.dumps(session.events[cursor]) + "\n\n"
+                cursor += 1
 
     return StreamingResponse(
-        _event_generator(),
+        _live_generator(session),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+@router.delete(
+    "/cancel/{search_id}",
+    summary="Cancel an in-flight streaming search",
+    description=(
+        "Cancels the orchestrator task for the given search_id (echoed back "
+        "from the original POST /intelligent/stream body). Returns 202 even "
+        "when the task already finished so the client doesn't need to race."
+    ),
+    status_code=202,
+)
+async def cancel_intelligent_search(search_id: str) -> Dict[str, Any]:
+    session = _SEARCH_SESSIONS.get(search_id)
+    if session is None:
+        return {"search_id": search_id, "cancelled": False, "reason": "not_found"}
+    if session.completed or (session.task and session.task.done()):
+        # Drop it now so the slot frees immediately even though it ended naturally.
+        _SEARCH_SESSIONS.pop(search_id, None)
+        return {"search_id": search_id, "cancelled": False, "reason": "already_done"}
+    if session.task is not None:
+        session.task.cancel()
+    _SEARCH_SESSIONS.pop(search_id, None)
+    return {"search_id": search_id, "cancelled": True}
 
 
 # ============================================================================

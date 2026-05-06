@@ -98,6 +98,23 @@ export function chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatRespon
   }));
 }
 
+/**
+ * Best-effort cancel for an in-flight chat. Frees the LangGraph worker slot
+ * in real time. Errors are swallowed by the caller — the version guard on
+ * the response side already protects the UI from late replies.
+ */
+export async function cancelChat(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  try {
+    await apiFetch<unknown>(`${BASE}/chat/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      timeoutMs: 10_000,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function listApprovals(session_id?: string) {
   void session_id;
   return apiFetch<BackendPendingApproval[]>(`${BASE}/approvals`).then((items) =>

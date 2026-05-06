@@ -18,13 +18,40 @@ export class ApiError extends Error {
 
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
+  /**
+   * When supplied, adds `X-Session-Version: <n>` to the outbound request.
+   * The backend can ignore it for now; it's primarily a client-side guard
+   * (the polling code reads the matching value back to decide whether to
+   * accept stale results).
+   */
+  sessionVersion?: number;
+  /** Anonymous per-tab visit ID — added as `X-Anonymous-Visit-Id` for log
+   *  correlation. No identity, no PII. */
+  anonymousVisitId?: string;
+}
+
+function buildSessionHeaders(opts: RequestOptions): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (typeof opts.sessionVersion === 'number') {
+    out['X-Session-Version'] = String(opts.sessionVersion);
+  }
+  if (opts.anonymousVisitId) {
+    out['X-Anonymous-Visit-Id'] = opts.anonymousVisitId;
+  }
+  return out;
 }
 
 export async function apiFetch<T = unknown>(
   url: string,
   opts: RequestOptions = {},
 ): Promise<T> {
-  const { timeoutMs = 30_000, headers, ...rest } = opts;
+  const {
+    timeoutMs = 30_000,
+    headers,
+    sessionVersion: _sv,
+    anonymousVisitId: _av,
+    ...rest
+  } = opts;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
@@ -35,6 +62,7 @@ export async function apiFetch<T = unknown>(
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        ...buildSessionHeaders(opts),
         ...headers,
       },
     });
@@ -72,6 +100,8 @@ export function streamSSE(
     method?: 'GET' | 'POST';
     body?: BodyInit;
     headers?: HeadersInit;
+    sessionVersion?: number;
+    anonymousVisitId?: string;
   } = {},
 ): () => void {
   const ctrl = new AbortController();
@@ -85,6 +115,7 @@ export function streamSSE(
         headers: {
           Accept: 'text/event-stream',
           ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+          ...buildSessionHeaders(opts),
           ...opts.headers,
         },
       };

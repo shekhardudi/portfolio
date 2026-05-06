@@ -20,9 +20,25 @@ export class EndpointMissingError extends Error {
   }
 }
 
-async function tryEndpoint<T>(path: string, init: RequestInit = {}, timeoutMs?: number) {
+/** Optional session metadata threaded through every call. */
+export interface SessionTag {
+  sessionVersion?: number;
+  anonymousVisitId?: string;
+}
+
+async function tryEndpoint<T>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs?: number,
+  tag: SessionTag = {},
+) {
   try {
-    return await apiFetch<T>(`${BASE}${path}`, { ...init, timeoutMs });
+    return await apiFetch<T>(`${BASE}${path}`, {
+      ...init,
+      timeoutMs,
+      sessionVersion: tag.sessionVersion,
+      anonymousVisitId: tag.anonymousVisitId,
+    });
   } catch (e) {
     if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
       throw new EndpointMissingError(`backend missing ${path}`);
@@ -166,15 +182,22 @@ export interface ScoutBriefing {
   [key: string]: unknown;
 }
 
-export function startScout(body: ScoutRequest) {
-  return tryEndpoint<ScoutAck>('/scout', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  }, 15_000);
+export function startScout(body: ScoutRequest, tag: SessionTag = {}) {
+  return tryEndpoint<ScoutAck>(
+    '/scout',
+    { method: 'POST', body: JSON.stringify(body) },
+    15_000,
+    tag,
+  );
 }
 
-export function getScout(id: string) {
-  return tryEndpoint<ScoutJob>(`/scout/${encodeURIComponent(id)}`, {}, 60_000);
+export function getScout(id: string, tag: SessionTag = {}) {
+  return tryEndpoint<ScoutJob>(
+    `/scout/${encodeURIComponent(id)}`,
+    {},
+    60_000,
+    tag,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -246,22 +269,66 @@ export interface PostJob {
   error?: string;
 }
 
-export function startPost(body: PostRequest) {
-  return tryEndpoint<PostAck>('/posts', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  }, 15_000);
+export function startPost(body: PostRequest, tag: SessionTag = {}) {
+  return tryEndpoint<PostAck>(
+    '/posts',
+    { method: 'POST', body: JSON.stringify(body) },
+    15_000,
+    tag,
+  );
 }
 
-export function getPost(id: string) {
-  return tryEndpoint<PostJob>(`/posts/${encodeURIComponent(id)}`, {}, 60_000);
+export function getPost(id: string, tag: SessionTag = {}) {
+  return tryEndpoint<PostJob>(
+    `/posts/${encodeURIComponent(id)}`,
+    {},
+    60_000,
+    tag,
+  );
 }
 
-export function updatePost(id: string, post_draft: string) {
-  return tryEndpoint<PostJob>(`/posts/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ post_draft }),
-  });
+export function updatePost(
+  id: string,
+  post_draft: string,
+  tag: SessionTag = {},
+) {
+  return tryEndpoint<PostJob>(
+    `/posts/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify({ post_draft }) },
+    undefined,
+    tag,
+  );
+}
+
+/**
+ * Best-effort backend cancel. Frees the worker slot in real time. Errors are
+ * swallowed by the caller \u2014 the version guard already protects against any
+ * stale results that slip through.
+ */
+export async function cancelScout(id: string, tag: SessionTag = {}): Promise<void> {
+  try {
+    await tryEndpoint<unknown>(
+      `/scout/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+      10_000,
+      tag,
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
+export async function cancelPost(id: string, tag: SessionTag = {}): Promise<void> {
+  try {
+    await tryEndpoint<unknown>(
+      `/posts/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+      10_000,
+      tag,
+    );
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -281,11 +348,13 @@ export interface ImageResponse {
   run_id: string;
 }
 
-export function generateImage(body: ImageRequest) {
-  return tryEndpoint<ImageResponse>('/images', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  }, 120_000);
+export function generateImage(body: ImageRequest, tag: SessionTag = {}) {
+  return tryEndpoint<ImageResponse>(
+    '/images',
+    { method: 'POST', body: JSON.stringify(body) },
+    120_000,
+    tag,
+  );
 }
 
 export function imageHref(image_id_or_url: string): string {
@@ -313,6 +382,11 @@ export interface HistoryRow {
   models?: Record<string, string> | null;
 }
 
-export function listHistory(limit = 50) {
-  return tryEndpoint<HistoryRow[]>(`/history?limit=${limit}`, {}, 10_000);
+export function listHistory(limit = 50, tag: SessionTag = {}) {
+  return tryEndpoint<HistoryRow[]>(
+    `/history?limit=${limit}`,
+    {},
+    10_000,
+    tag,
+  );
 }

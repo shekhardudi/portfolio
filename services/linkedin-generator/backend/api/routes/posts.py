@@ -48,6 +48,29 @@ def get_post(job_id: str, store: JobStore = Depends(get_job_store)) -> PostJob:
     return _to_schema(job)
 
 
+@router.delete("/{job_id}", status_code=202)
+def cancel_post(
+    job_id: str,
+    store: JobStore = Depends(get_job_store),
+    runner: JobRunner = Depends(get_job_runner),
+) -> dict[str, Any]:
+    """Best-effort cancel — frees the crew worker slot in real time.
+
+    Returns 202 even when the job is already terminal so the client doesn't
+    need to special-case races between its own reset click and a job that
+    just finished server-side.
+    """
+    job = store.get(job_id)
+    if not job or job.kind != "posts":
+        raise HTTPException(status_code=404, detail="post job not found")
+    cancelled = runner.cancel(job_id)
+    return {
+        "job_id": job_id,
+        "cancelled": cancelled,
+        "status": store.get(job_id).status.value if store.get(job_id) else "unknown",
+    }
+
+
 @router.patch("/{job_id}", response_model=PostJob)
 def update_post(
     job_id: str,
