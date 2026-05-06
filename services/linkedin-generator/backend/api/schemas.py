@@ -48,6 +48,7 @@ class ScoutJobResult(BaseModel):
     modules: list[str]
     days: int
     cost_breakdown: Optional[dict[str, Any]] = None
+    briefing: Optional[dict[str, Any]] = None
 
 
 class ScoutJob(BaseModel):

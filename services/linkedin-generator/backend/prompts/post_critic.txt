@@ -25,7 +25,7 @@ groundbreaking, cutting-edge, synergy, leverage (as a verb), harness, unleash.
 Delete every instance. Rewrite the sentence without them.
 
 CHECK 5 — CHARACTER COUNT:
-Count the post body characters (excluding hashtags). Must be STRICTLY under 1000.
+Count the post body characters (excluding hashtags). Must be STRICTLY under 1200.
 If over: cut filler from THE BRAIN, shorten bullets in THE GIFT, tighten every
 sentence. Do not cut THE HOOK or THE SOUL.
 
@@ -54,4 +54,4 @@ Max 5, placed at the very end after a blank line. Remove any generic/weak ones.
 Output exactly:
 
 ## Finalized Post
-(plain text, under 1000 chars body, hashtags after a blank line)
+(plain text, under 1200 chars body, hashtags after a blank line)

@@ -1,0 +1,375 @@
+Recommended strategy
+
+Use a two-level session model:
+
+Anonymous site visit session
+├── Intellisearch demo session
+├── Agentic HR demo session
+└── LinkedIn Generator demo session
+    ├── Scout workspace session
+    └── Studio workspace session
+
+The key decision: do not reset a solution when the user navigates to another solution.
+Each demo should keep running during the current visit until the user explicitly resets it, the browser tab/session expires, or the site-level session is cleared.
+
+This gives the smoothest portfolio experience, especially because demos include long-running agent tasks.
+
+1. Site-level session
+
+Because portfolio has no login, every visitor should get an anonymous temporary session.
+
+Behavior
+
+When a user first opens the portfolio:
+
+Create anonymousVisitId
+Initialize all demos to empty/default state
+
+The site session should store only temporary demo state, not identity.
+
+Recommended lifecycle:
+
+Event
+
+Behavior
+
+First visit
+
+All demos start fresh
+
+Navigate between pages
+
+Preserve demo state
+
+Move from one solution to another
+
+Preserve each solution’s session
+
+Browser refresh
+
+Restore current demo state
+
+Close tab / session expires
+
+Clear state
+
+
+I would not reset everything on normal navigation or solution switching. Users often explore a portfolio non-linearly. If they start a 2-minute LinkedIn Scout job, move to Agentic HR, then come back, they should see the Scout result or current progress.
+
+Storage recommendation
+
+Use:
+
+Frontend: sessionStorage
+Backend: Redis / database session store with TTL (Think if this is required)
+
+Use sessionStorage, not localStorage, because this is a temporary demo experience. sessionStorage keeps state across page refreshes in the same tab but does not persist forever like localStorage.
+
+Suggested TTL:
+
+30–60 minutes of inactivity
+
+For long-running jobs and generated images, you may keep backend artifacts slightly longer, for example a few hours, but the visible demo session should still feel temporary.
+
+2. Global UX pattern
+
+Add a small global session control somewhere subtle, such as the navbar or demo layout:
+
+Demo session active
+[Reset all demos]
+
+If there are active background jobs:
+
+Demo session active · 2 jobs running
+
+Each solution card or tab can also show state:
+
+Intellisearch          Ready
+Agentic HR             Approval pending
+LinkedIn Generator     Scout running
+
+This makes the portfolio feel alive without forcing the user to stay on one page.
+
+3. Solution-level session rules
+
+Each solution gets its own independent session. Resetting one solution should not affect the others.
+
+Reset Intellisearch ≠ Reset Agentic HR
+Reset Agentic HR ≠ Reset LinkedIn Generator
+Reset Scout ≠ Reset Studio
+
+This is important because each solution has a different mental model.
+
+4. Solution 1: Intellisearch session design
+
+Intellisearch is closer to a search engine than a conversation, so I would avoid calling the control “Reset Session.”
+
+Use language like:
+
+Clear search
+New search
+Clear results
+
+ 
+
+UX behavior
+
+The demo has two tabs:
+
+Search
+API Response
+
+Initial state:
+
+As is
+
+Before a search:
+
+API Response body tab says:
+“Run a search to see the raw API response.”
+
+After a search:
+
+Search tab shows results
+As is
+
+Reset behavior:
+
+Clear search:
+- clears current query
+- clears results
+- clears API response
+
+back to inital state
+
+
+
+5. Solution 2: Agentic HR session design
+
+Agentic HR should have one shared session across Chat and Approvals.
+
+Agentic HR session
+├── Chat
+└── Approvals
+
+The Chat and Approvals tabs are part of the same scenario. A new conversation should reset both.
+
+ 
+
+UX behavior
+
+Tabs:
+
+Chat
+Approvals
+
+Initial state:
+
+Chat: As is
+Approvals: As is
+
+During conversation:
+
+As is
+
+When approvals exist:
+
+As is
+
+When a user clicks New Conversation:
+
+Reset chat messages
+Create new HR session/conversation ID
+Cancel or detach active HR jobs
+
+
+6. Solution 3: LinkedIn Generator session design
+
+This one should be split into two child workspaces:
+
+LinkedIn Generator session
+├── Scout workspace
+└── Studio workspace
+
+The Output tab should not have its own independent session. It should be a view of Studio outputs.
+
+Scout  →  Studio  →  Output
+
+Core principle
+
+Scout and Studio should be independent but interoperable.
+
+That means:
+
+Scout can run without Studio.
+Studio can run without Scout.
+Scout outputs can be copied/imported into Studio.
+Resetting Scout should not delete Studio posts.
+Resetting Studio should not delete Scout research.
+
+The import action should create a copy of the selected Scout item inside Studio, not a live dependency.
+
+7. LinkedIn Generator tab behavior
+
+Scout tab
+
+Scout is for gathering relevant information.
+
+Initial state:
+
+As is
+
+When Scout runs:
+
+layout and progress as is
+Allow user to leave the tab
+Keep the job running
+
+When Scout completes:
+
+As is
+
+Useful Scout controls:
+
+Run Scout
+Reset Scout 
+(remove the bottom reset session)
+
+Reset Scout should:
+
+Clear Scout outputs
+Clear Scout active job
+Increment Scout version
+Not touch Studio drafts, posts, or images
+
+If a Scout job is running and the user resets Scout, use one of these approaches:
+
+Best: cancel the backend job
+Acceptable: mark the job as abandoned and ignore its result when it completes
+
+The second option is easier and often good enough for demos.
+
+Studio tab
+
+Studio is for post generation.
+
+Studio can receive input in two ways:
+
+Manual topic entry
+Imported Scout topic
+
+
+When the user imports from Scout:
+
+Copy topic into Studio draft
+Switch user to Studio tab
+Show a small message: “Imported from Scout”
+
+Studio controls:
+
+Generate post (replace Run production crew)
+Reset Studio
+
+Reset Studio should:
+
+Clear draft
+Clear generated posts
+Clear generated images
+Cancel or ignore active post/image jobs
+Not touch Scout results
+
+Output tab
+
+Output is a presentation layer for Studio results.
+
+It should show:
+
+Generated posts
+As is
+
+Output should not need a separate reset.
+
+Use Studio reset for this:
+
+Reset Studio clears Output
+
+The Output tab can be disabled or show an empty state until a post exists:
+
+“Generate a post in Studio to see a draft here.”
+
+8. Long-running job strategy
+
+For the LinkedIn Generator, do not rely only on frontend state. Use backend jobs.
+
+Each long-running action should create a job:
+
+Scout job
+Post generation job
+Image generation job
+
+ 
+
+Why sessionVersion matters
+
+Every time the user resets Scout or Studio, increment its version.
+
+Example:
+
+Scout version = 1
+User starts Scout job A
+User resets Scout
+Scout version = 2
+Job A finishes later
+Backend sees job A belongs to version 1
+Backend ignores result
+
+This prevents old results from appearing in a freshly reset session.
+
+This is especially important for your 1–3 minute workflows.
+
+9. Background behavior while navigating
+
+Recommended behavior:
+
+User action
+
+Recommended behavior
+
+Starts Scout, moves to Studio
+
+Scout keeps running
+
+Starts Post generation, moves to Scout
+
+Post generation keeps running
+
+Moves to another solution
+
+LinkedIn jobs keep running
+
+Refreshes browser
+
+Restore session and resume polling
+
+Clicks Reset Scout
+
+Clear Scout and ignore/cancel Scout job
+
+Clicks Reset Studio
+
+Clear Studio and ignore/cancel post/image jobs
+
+Clicks Reset all demos
+
+Clear everything and ignore/cancel all jobs
+
+This is the smoothest model.
+
+Do not reset individual sessions when the user moves between solutions. That would feel surprising and would punish exploration.
+
+ 
+
+10. Suggested API design
+
+Think if we need to add api endpoints as per new session design. Especially if we want to cancel running jobs.
+

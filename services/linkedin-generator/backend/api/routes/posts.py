@@ -109,7 +109,8 @@ async def _post_worker(job: Job, store: JobStore) -> dict[str, Any]:
     from backend.post_generator.visual_director import build_image_plan, extract_emotional_beats
 
     inputs = dict(job.inputs)
-    audience = inputs.pop("audience", "engineering")
+    audience = inputs.get("audience", "engineering")
+    # Keep `audience` in inputs so the crew templates can reference {audience}.
     today = date.today()
     inputs.setdefault("author_vibe", "calm, direct, and slightly skeptical")
     inputs["current_year"] = str(today.year)

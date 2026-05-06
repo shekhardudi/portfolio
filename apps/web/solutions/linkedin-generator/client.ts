@@ -82,8 +82,88 @@ export interface ScoutJob {
       message: string;
     }>;
   };
-  result?: { report_md: string; modules: string[]; days: number; cost_breakdown?: CostBreakdown };
+  result?: {
+    report_md: string;
+    modules: string[];
+    days: number;
+    cost_breakdown?: CostBreakdown;
+    briefing?: ScoutBriefing;
+  };
   error?: string;
+}
+
+/**
+ * Pickable post-topic categories — drives renderer grouping + UI affordances.
+ * Mirrors `SignalCategory` in services/linkedin-generator/backend/scout/types.py.
+ */
+export type SignalCategory =
+  | 'release'
+  | 'research'
+  | 'tool'
+  | 'debate'
+  | 'lesson'
+  | 'strategy';
+
+export type FindingNovelty = 'new' | 'follow_up' | 'stale';
+
+/** Atomic structured fact extracted from raw scanner items. */
+export interface ScoutFinding {
+  id: string;
+  claim: string;
+  source_url?: string;
+  source_label?: string;
+  module?: string;
+  novelty?: FindingNovelty;
+  confidence?: number;
+  why_it_matters?: string;
+}
+
+/** A pickable, post-ready story — one click → LinkedIn post. */
+export interface ScoutSignal {
+  id: string;
+  category: SignalCategory;
+  headline: string;
+  summary: string;
+  /** Ready-to-paste LinkedIn hook (1–2 sentences). Maps to "Your take". */
+  post_angle: string;
+  finding_ids: string[];
+  primary_module?: string;
+}
+
+export interface ScoutTheme {
+  title: string;
+  summary: string;
+  finding_ids: string[];
+}
+
+export interface ScoutTension {
+  title: string;
+  summary: string;
+  finding_ids: string[];
+}
+
+/**
+ * Structured briefing returned alongside the markdown report. Mirrors the
+ * `Briefing` Pydantic model in the backend. Driving the UI from this object
+ * (instead of re-parsing the markdown) is what makes per-signal / per-finding
+ * picking possible.
+ */
+export interface ScoutBriefing {
+  schema_version?: number;
+  /** One-paragraph executive summary at the top of the briefing. */
+  lead?: string;
+  signals?: ScoutSignal[];
+  themes?: ScoutTheme[];
+  tensions?: ScoutTension[];
+  gaps?: string[];
+  action_items?: string[];
+  findings?: ScoutFinding[];
+  modules_used?: string[];
+  /** module_id → count of items contributed to the synthesis */
+  module_activity?: Record<string, number>;
+  memory_signals?: Record<string, unknown>;
+  /** Allow forward-compat additions without forcing a client release. */
+  [key: string]: unknown;
 }
 
 export function startScout(body: ScoutRequest) {

@@ -72,6 +72,22 @@ writing_task:
     Author mood / tone shift for this specific post: "{author_vibe}"
     (If blank or unspecified, default to: calm, direct, slightly skeptical.)
 
+    Target audience: "{audience}"
+
+    AUDIENCE-AWARE TONE (apply BEFORE writing):
+    - If audience == "engineering":
+        Write to senior engineers, ML researchers, and tech leads who can spot BS.
+        Keep technical specifics: model names, benchmarks, architectures, latency,
+        token costs, eval scores. Use concrete acronyms (RLHF, MoE, RAG, KV-cache).
+        Voice: direct, first-principles, opinionated. Assume the reader knows the field.
+    - If audience == "business":
+        Write to founders, product leaders, and decision-makers. Translate technical
+        artifacts into business outcomes (cost, speed, revenue, risk, hiring leverage).
+        When you must mention a model or technique, follow it with a one-clause
+        plain-English gloss. NO acronym walls. Voice: clear, decisive, ROI-aware.
+        Replace "benchmark scores" with "what changes for users / margins / teams".
+    Whichever audience you target, do NOT name the audience in the post itself.
+
     ═══════════════════════════════════════════
     FOLLOW THIS EXACT 5-PART ANATOMY — IN ORDER
     ═══════════════════════════════════════════
@@ -141,7 +157,14 @@ writing_task:
 
 critique_task:
   description: >
-    Read the draft as a skeptical engineer who has seen too many AI-generated posts.
+    Read the draft as a skeptical reader who has seen too many AI-generated posts.
+    Target audience for this post: "{audience}".
+    - If audience == "engineering": the reader is a senior engineer / ML researcher.
+      Reject vague claims. Demand specifics (model, benchmark, mechanism).
+    - If audience == "business": the reader is a founder / product / decision-maker.
+      Reject acronym walls and unexplained jargon. Demand business-impact framing
+      (cost, speed, revenue, risk, hiring leverage). Each technical term must have
+      a plain-English gloss.
     Work through this checklist in order — fix every failure, don't skip any:
 
     CHECK 1 — THE HOOK:

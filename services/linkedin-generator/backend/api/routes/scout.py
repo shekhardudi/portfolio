@@ -88,13 +88,14 @@ async def _scout_worker(job: Job, store: JobStore) -> dict[str, Any]:
             },
         )
 
-    def _run() -> tuple[str, dict]:
-        return scout.run(modules=modules, days=days, progress_callback=progress_cb)
+    def _run() -> tuple[str, dict, dict | None]:
+        return scout.run_with_briefing(modules=modules, days=days, progress_callback=progress_cb)
 
-    report, cost_breakdown = await loop.run_in_executor(None, _run)
+    report, cost_breakdown, briefing = await loop.run_in_executor(None, _run)
     return {
         "report_md": report,
         "modules": modules,
         "days": days,
         "cost_breakdown": cost_breakdown,
+        "briefing": briefing,
     }

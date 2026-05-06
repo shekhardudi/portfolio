@@ -55,3 +55,68 @@ export function estimateCostUSD(inputTokens: number, outputTokens: number) {
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
+
+/**
+ * Extract a short, quotable "take" from a scout-briefing section body.
+ *
+ * Strategy: walk the markdown line-by-line, skip headers, lists, code fences
+ * and bold callout labels, return the first ordinary paragraph. Trim to a
+ * sensible length so it fits on a card without truncating mid-sentence when
+ * possible.
+ */
+export function extractHook(body: string, maxChars = 220): string {
+  if (!body) return '';
+  const lines = body.split(/\r?\n/);
+  let inFence = false;
+  const para: string[] = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (!line) {
+      if (para.length > 0) break; // first paragraph completed
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) continue;          // header
+    if (/^[-*+]\s/.test(line)) continue;            // bullet
+    if (/^\d+\.\s/.test(line)) continue;            // ordered list
+    if (/^>\s/.test(line)) {
+      para.push(line.replace(/^>\s*/, ''));
+      continue;
+    }
+    if (/^\*\*[^*]+\*\*\s*[:\-—]/.test(line)) continue; // **Label:** ...
+    para.push(line);
+  }
+
+  let out = para.join(' ').replace(/\s+/g, ' ').trim();
+  if (!out) {
+    // Fall back to the first non-empty, non-header line.
+    out = lines
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith('#') && !l.startsWith('```')) ?? '';
+    out = out.replace(/^[-*+>\d.\s]+/, '').trim();
+  }
+
+  // Light markdown stripping for display.
+  out = out
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+
+  if (out.length <= maxChars) return out;
+  // Try to break at a sentence boundary near the cap.
+  const window = out.slice(0, maxChars);
+  const lastStop = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));
+  if (lastStop >= maxChars * 0.6) return window.slice(0, lastStop + 1).trim();
+  return window.trimEnd() + '…';
+}
+
+/** Drop trailing source-list artifacts that briefings often append to the heading copy. */
+export function cleanHeading(heading: string): string {
+  return heading.replace(/\s*\([^)]*\)\s*$/, '').trim() || heading;
+}

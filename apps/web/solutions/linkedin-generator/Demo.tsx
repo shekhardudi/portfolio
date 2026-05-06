@@ -38,13 +38,12 @@ export default function Demo() {
     }
   }, [state.crew_done, innerTab]);
 
-  function importToStudio(heading: string, body: string) {
-    const trimmed = heading === '__intro__' ? body : `${heading}\n\n${body}`;
-    dispatch({ type: 'IMPORT_TOPIC', topic: trimmed.slice(0, 280) });
+  function importToStudio(topic: string, take: string, vibe?: string) {
+    dispatch({ type: 'IMPORT_TOPIC', topic, leader_angle: take, author_vibe: vibe });
     setInnerTab('studio');
     toast({
       title: 'Imported into Studio',
-      description: heading === '__intro__' ? 'Intro section' : heading,
+      description: topic.slice(0, 80),
     });
   }
 

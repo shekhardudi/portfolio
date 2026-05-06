@@ -2,7 +2,13 @@
 
 import { useEffect, useReducer } from 'react';
 import { MODULE_OPTIONS } from './modules';
-import type { AgentEvent, CostBreakdown, JobStatus, PostStage } from './client';
+import type {
+  AgentEvent,
+  CostBreakdown,
+  JobStatus,
+  PostStage,
+  ScoutBriefing,
+} from './client';
 
 const STORAGE_KEY = 'linkedin-demo-v2';
 
@@ -29,6 +35,12 @@ export interface DemoState {
   scout_progress_module: string;
   scout_callbacks: Array<{ ts: string; module: string; phase: string; message: string }>;
   scout_error: string | null;
+  /**
+   * Structured briefing from the most recent completed scout run. Persisted so
+   * the Scout tab still shows signals/findings after the user navigates away
+   * and back, or reloads the page — until the session is reset.
+   */
+  scout_briefing: ScoutBriefing | null;
   selected_modules: string[];
   pulse_value: number;
   pulse_unit: 'days' | 'weeks' | 'months' | 'years';
@@ -76,6 +88,7 @@ const INITIAL: DemoState = {
   scout_progress_module: '',
   scout_callbacks: [],
   scout_error: null,
+  scout_briefing: null,
   selected_modules: MODULE_OPTIONS.map((m) => m.key),
   pulse_value: 7,
   pulse_unit: 'days',
@@ -111,7 +124,12 @@ const INITIAL: DemoState = {
 
 export type DemoAction =
   | { type: 'PATCH'; payload: Partial<DemoState> }
-  | { type: 'IMPORT_TOPIC'; topic: string }
+  | {
+      type: 'IMPORT_TOPIC';
+      topic: string;
+      leader_angle?: string;
+      author_vibe?: string;
+    }
   // Scout
   | { type: 'SCOUT_START'; job_id: string }
   | {
@@ -123,7 +141,12 @@ export type DemoAction =
       message?: string;
       callbacks?: Array<{ ts: string; module: string; phase: string; message: string }>;
     }
-  | { type: 'SCOUT_DONE'; report_md: string; cost?: CostBreakdown | null }
+  | {
+      type: 'SCOUT_DONE';
+      report_md: string;
+      cost?: CostBreakdown | null;
+      briefing?: ScoutBriefing | null;
+    }
   | { type: 'SCOUT_FAIL'; error: string }
   // Posts
   | { type: 'JOB_START'; job_id: string }
@@ -154,8 +177,13 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
         ...s,
         imported_topic: a.topic,
         topic: a.topic,
-        leader_angle: '',
-        author_vibe: '',
+        // Caller supplies the take when importing from a structured signal/finding;
+        // fall back to wiping the field so an old take from a previous import
+        // doesn't leak into the new run.
+        leader_angle: a.leader_angle ?? '',
+        // Scout's composer now ships a vibe alongside the take. Preserve the
+        // existing vibe if the caller didn't pass one (e.g. legacy callers).
+        author_vibe: a.author_vibe !== undefined ? a.author_vibe : s.author_vibe,
       };
 
     case 'SCOUT_START':
@@ -172,6 +200,9 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
         pulse_done: false,
         scout_error: null,
         scout_cost: null,
+        // Wipe the previous briefing so the UI doesn't mix old signals with a
+        // new in-flight run.
+        scout_briefing: null,
       };
     case 'SCOUT_TICK':
       return {
@@ -190,6 +221,7 @@ function reducer(s: DemoState, a: DemoAction): DemoState {
         pulse_md: a.report_md,
         pulse_done: true,
         scout_cost: a.cost ?? s.scout_cost,
+        scout_briefing: a.briefing ?? s.scout_briefing,
       };
     case 'SCOUT_FAIL':
       return {
@@ -302,6 +334,7 @@ export function useDemoState() {
         pulse_unit: state.pulse_unit,
         pulse_md: state.pulse_md,
         pulse_done: state.pulse_done,
+        scout_briefing: state.scout_briefing,
         run_id: state.run_id,
         post_draft: state.post_draft,
         image_prompt: state.image_prompt,

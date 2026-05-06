@@ -70,4 +70,4 @@ STRICT FORMAT RULES
    groundbreaking, cutting-edge, synergy, leverage (as a verb), harness, unleash.
 
 After writing the post, count the characters manually and confirm the count
-is under 1000 before finalizing.
+is under 1200 before finalizing.

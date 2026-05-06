@@ -1,21 +1,32 @@
 """
-Community Sentiment — Reddit, X/Twitter, TLDR AI, and Hacker News.
+Community Sentiment — multi-query, subreddit-targeted, HN-aware.
 
 Tools used:
-  - Tavily: Reddit (topic="news", include_domains) + X (site: operator query)
-  - crawl4ai: TLDR AI newsletter scrape
-  - HN Algolia API: Hacker News with UNIX timestamp filtering
+  - Tavily news (rotating bank of 6, pick 3 per run)
+  - Tavily news with reddit subreddit include_domains (always 2 queries)
+  - HN Algolia API with UNIX timestamp + points filtering
 
-Note: Tavily's `days` param is only reliable when topic="news". The X/Twitter
-site: operator queries may not honour the days filter — results could exceed
-the requested time window. This is a known Tavily limitation.
+Cache: Tavily calls are wrapped via backend.scout.cache; HN is not (cheap +
+freshness-sensitive).
 """
+
+from __future__ import annotations
+
+from typing import Any, Optional
 
 import httpx
 from tavily import TavilyClient
 
-from .base import BaseScanner, ScanResult
-from .crawl4ai_helper import crawl_urls_sync
+from ..cache import cached_call
+from ..query_bank import (
+    COMMUNITY_SENTIMENT_BANK,
+    COMMUNITY_SENTIMENT_SUBREDDIT_QUERIES,
+    gap_probe,
+    pick_queries,
+)
+from ..types import MemorySnapshot
+from ..url_utils import canonical_url
+from .base import BaseScanner, ProgressFn, ScanResult
 from .time_utils import days_to_cutoff
 
 
@@ -24,71 +35,111 @@ class CommunitySentimentScanner(BaseScanner):
     MODULE_LABEL = "Community Sentiment"
 
     def __init__(self, tavily_key: str):
+        self._tavily_key = tavily_key
         self._tavily = TavilyClient(api_key=tavily_key) if tavily_key else None
 
+    # Legacy entry-point — keep working without snapshot/progress.
     def scan(self, days: int) -> ScanResult:
+        return self.gather(days=days, snapshot=None, progress=None)
+
+    def gather(
+        self,
+        days: int,
+        snapshot: Optional[MemorySnapshot] = None,
+        progress: Optional[ProgressFn] = None,
+    ) -> ScanResult:
         days_arg = days if days > 0 else None
         items: list[dict] = []
+        queries_used: list[str] = []
+        covered_urls = snapshot.covered_urls if snapshot else set()
 
-        # --- Reddit via Tavily (topic=news respects days filter) ---
+        def _emit(msg: str, phase: str = "progress", **extra: Any) -> None:
+            if progress:
+                progress({"module": self.MODULE_ID, "phase": phase, "message": msg, **extra})
+
+        def _on_hit(query: str, age: int) -> None:
+            _emit(f"📦 cache · {query[:48]}… (age {age // 60}m)", phase="cache")
+
+        # --- Rotating Tavily news bank (3-of-6) + optional gap probe ---
         if self._tavily:
-            try:
-                resp = self._tavily.search(
-                    query="AI LLM machine learning developer opinion discussion",
-                    search_depth="basic",
-                    topic="news",
-                    include_domains=["reddit.com"],
-                    days=days_arg,
-                    max_results=5,
-                )
-                for r in resp.get("results", []):
-                    items.append({
-                        "title": r.get("title", ""),
-                        "content": r.get("content", "")[:300],
-                        "url": r.get("url", ""),
-                        "source": "reddit",
-                    })
-            except Exception:
-                pass
+            news_queries = pick_queries(
+                COMMUNITY_SENTIMENT_BANK, snapshot, k=3, module_id=self.MODULE_ID
+            )
+            probe = gap_probe(snapshot)
+            if probe:
+                news_queries.append(probe)
+            for q in news_queries:
+                queries_used.append(q)
+                try:
+                    resp = cached_call(
+                        provider="tavily.news",
+                        query=q,
+                        days=days_arg or 0,
+                        fn=lambda: self._tavily.search(
+                            query=q,
+                            search_depth="basic",
+                            topic="news",
+                            days=days_arg,
+                            max_results=5,
+                        ),
+                        on_hit=lambda age, _q=q: _on_hit(_q, age),
+                    )
+                    for r in resp.get("results", []):
+                        url = canonical_url(r.get("url", ""))
+                        if url and url in covered_urls:
+                            continue
+                        items.append({
+                            "title": r.get("title", ""),
+                            "content": (r.get("content", "") or "")[:300],
+                            "url": url or r.get("url", ""),
+                            "source": "tavily_news",
+                            "query": q,
+                        })
+                except Exception as e:
+                    _emit(f"tavily news '{q[:32]}…' failed: {e}", phase="warn")
 
-            # --- X/Twitter via Tavily site: operator ---
-            # Note: days param may be ignored for non-news topic queries
-            try:
-                resp = self._tavily.search(
-                    query='site:x.com AI LLM agent insights practitioners 2025',
-                    search_depth="basic",
-                    days=days_arg,
-                    max_results=5,
-                )
-                for r in resp.get("results", []):
-                    items.append({
-                        "title": r.get("title", ""),
-                        "content": r.get("content", "")[:300],
-                        "url": r.get("url", ""),
-                        "source": "twitter",
-                    })
-            except Exception:
-                pass
+            # --- Subreddit-targeted Tavily ---
+            for q in COMMUNITY_SENTIMENT_SUBREDDIT_QUERIES:
+                queries_used.append(q)
+                try:
+                    resp = cached_call(
+                        provider="tavily.reddit",
+                        query=q,
+                        days=days_arg or 0,
+                        fn=lambda: self._tavily.search(
+                            query=q,
+                            search_depth="basic",
+                            topic="news",
+                            include_domains=[
+                                "reddit.com/r/MachineLearning",
+                                "reddit.com/r/LocalLLaMA",
+                                "reddit.com/r/singularity",
+                            ],
+                            days=days_arg,
+                            max_results=4,
+                        ),
+                        on_hit=lambda age, _q=q: _on_hit(_q, age),
+                    )
+                    for r in resp.get("results", []):
+                        url = canonical_url(r.get("url", ""))
+                        if url and url in covered_urls:
+                            continue
+                        items.append({
+                            "title": r.get("title", ""),
+                            "content": (r.get("content", "") or "")[:300],
+                            "url": url or r.get("url", ""),
+                            "source": "reddit",
+                            "query": q,
+                        })
+                except Exception as e:
+                    _emit(f"tavily reddit '{q[:32]}…' failed: {e}", phase="warn")
 
-        # --- TLDR AI via crawl4ai ---
-        try:
-            crawled = crawl_urls_sync(["https://tldr.tech/ai"])
-            for page in crawled:
-                items.append({
-                    "title": "TLDR AI Latest Digest",
-                    "content": page["content"][:500],
-                    "url": page["url"],
-                    "source": "tldr_ai",
-                })
-        except Exception:
-            pass
-
-        # --- Hacker News via Algolia API with unix timestamp filter ---
+        # --- HN Algolia (no cache) ---
         try:
             params: dict = {
-                "query": "AI LLM machine learning agent",
+                "query": "OpenAI OR Anthropic OR Google OR DeepMind OR Mistral OR xAI",
                 "tags": "story",
-                "hitsPerPage": 10,
+                "hitsPerPage": 12,
                 "numericFilters": "points>30",
             }
             if days_arg:
@@ -101,18 +152,23 @@ class CommunitySentimentScanner(BaseScanner):
                 timeout=10.0,
             )
             resp.raise_for_status()
-            for h in resp.json().get("hits", [])[:6]:
+            for h in resp.json().get("hits", [])[:8]:
+                url = canonical_url(h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}")
+                if url and url in covered_urls:
+                    continue
                 items.append({
                     "title": h.get("title", ""),
                     "content": f"{h.get('points', 0)} pts, {h.get('num_comments', 0)} comments",
-                    "url": h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}",
+                    "url": url,
                     "source": "hackernews",
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            _emit(f"hn algolia failed: {e}", phase="warn")
 
+        _emit(f"{len(items)} items ({len(queries_used)} queries)", phase="done")
         return ScanResult(
             module_id=self.MODULE_ID,
             module_label=self.MODULE_LABEL,
             items=items,
+            queries_used=queries_used,
         )

@@ -69,6 +69,19 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.1"
     ollama_num_ctx: int = 8192
 
+    # Scout v2 — extractor / synthesizer / memory / cache.
+    scout_extractor_model: str = "openai/gpt-4o-mini"
+    scout_synthesizer_model: str = "openai/gpt-4o-mini"
+    scout_extractor_temperature: float = 0.2
+    scout_synthesizer_temperature: float = 0.5
+    scout_memory_days: int = 30
+    scout_max_extractor_items: int = 120
+    scout_module_min_floor: int = 6
+    scout_module_concurrency: int = 4
+    scout_token_budget_usd: float = 0.05
+    scout_cache_enabled: bool = True
+    scout_cache_ttl_hours: int = 24
+
     # ------------------------------------------------------------------
     # API config
     # ------------------------------------------------------------------

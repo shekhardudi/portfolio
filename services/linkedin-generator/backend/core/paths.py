@@ -31,5 +31,37 @@ def history_path() -> Path:
     return outputs_dir() / "history.jsonl"
 
 
+def scout_dir() -> Path:
+    p = outputs_dir() / "scout"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def scout_run_dir(run_id: str) -> Path:
+    p = scout_dir() / run_id
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def scout_index_path() -> Path:
+    return scout_dir() / "index.jsonl"
+
+
+def scout_dir() -> Path:
+    p = outputs_dir() / "scout"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def scout_run_dir(run_id: str) -> Path:
+    p = scout_dir() / run_id
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def scout_index_path() -> Path:
+    return scout_dir() / "index.jsonl"
+
+
 def new_run_id() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -38,6 +38,8 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
   const [unavailable, setUnavailable] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const cancelledRef = useRef(false);
+  /** Guards against a remount-resume race spawning two concurrent loops. */
+  const pollingRef = useRef(false);
 
   // Tick a clock for the stage timer.
   useEffect(() => {
@@ -47,6 +49,21 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
     }, 500);
     return () => window.clearInterval(id);
   }, [busy, state.started_at_ms]);
+
+  // Recovery: if the panel mounts while persisted state thinks a crew run is
+  // already in flight (the user switched out of and back into the Studio tab
+  // mid-run), pick polling back up — otherwise the run looks frozen until
+  // forever. Same trick as ScoutPanel.
+  useEffect(() => {
+    const jobId = state.current_job_id;
+    const inFlight =
+      !!jobId && (state.job_status === 'queued' || state.job_status === 'running');
+    if (!inFlight) return;
+    cancelledRef.current = false;
+    void pollUntilDone(jobId);
+    // Mount-only resume: deliberately empty deps; state at mount is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function patch(p: Partial<DemoState>) {
     dispatch({ type: 'PATCH', payload: p });
@@ -79,42 +96,51 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
   }
 
   async function pollUntilDone(jobId: string) {
+    // Single in-flight loop only — protects against a remount-resume race
+    // where both the explicit run() call and the recovery effect could try
+    // to start polling.
+    if (pollingRef.current) return;
+    pollingRef.current = true;
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     let consecutiveErrors = 0;
-    while (!cancelledRef.current && Date.now() < deadline) {
-      try {
-        const job = await getPost(jobId);
-        consecutiveErrors = 0;
-        applyJob(job);
-        if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-          if (job.status === 'completed' && job.result) {
-            onCompleted();
+    try {
+      while (!cancelledRef.current && Date.now() < deadline) {
+        try {
+          const job = await getPost(jobId);
+          consecutiveErrors = 0;
+          applyJob(job);
+          if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+            if (job.status === 'completed' && job.result) {
+              onCompleted();
+            }
+            return;
           }
-          return;
+        } catch (e) {
+          // 404 means the server forgot the job — fatal.
+          if (e instanceof ApiError && e.status === 404) {
+            dispatch({ type: 'JOB_FAIL', error: 'Job lost server-side' });
+            return;
+          }
+          // Everything else (timeouts, 5xx, AbortError, network) is treated as
+          // transient. Long crew runs frequently make a single GET hang past
+          // the default 30s timeout — we just retry until the run finishes or
+          // the overall deadline fires.
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= POLL_MAX_CONSECUTIVE_ERRORS) {
+            dispatch({
+              type: 'JOB_FAIL',
+              error: 'Lost connection to backend — please retry.',
+            });
+            return;
+          }
         }
-      } catch (e) {
-        // 404 means the server forgot the job — fatal.
-        if (e instanceof ApiError && e.status === 404) {
-          dispatch({ type: 'JOB_FAIL', error: 'Job lost server-side' });
-          return;
-        }
-        // Everything else (timeouts, 5xx, AbortError, network) is treated as
-        // transient. Long crew runs frequently make a single GET hang past the
-        // default 30s timeout — we just retry until the run finishes or the
-        // overall deadline fires.
-        consecutiveErrors += 1;
-        if (consecutiveErrors >= POLL_MAX_CONSECUTIVE_ERRORS) {
-          dispatch({
-            type: 'JOB_FAIL',
-            error: 'Lost connection to backend — please retry.',
-          });
-          return;
-        }
+        await sleep(POLL_INTERVAL_MS);
       }
-      await sleep(POLL_INTERVAL_MS);
-    }
-    if (!cancelledRef.current) {
-      dispatch({ type: 'JOB_FAIL', error: 'Run exceeded the 20 minute polling window.' });
+      if (!cancelledRef.current) {
+        dispatch({ type: 'JOB_FAIL', error: 'Run exceeded the 20 minute polling window.' });
+      }
+    } finally {
+      pollingRef.current = false;
     }
   }
 
@@ -209,12 +235,12 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
 
         <Field label="Your take (the human bridge)">
           <textarea
-            rows={3}
+            rows={6}
             value={state.leader_angle}
             onChange={(e) => patch({ leader_angle: e.target.value })}
             disabled={busy}
             className="input"
-            placeholder="The opinion that becomes the soul of the post."
+            placeholder="The opinion that becomes the soul of the post — your experience, your counterpoint, the thing only you could write."
           />
         </Field>
 
@@ -227,33 +253,6 @@ export default function ProductionStudio({ state, dispatch, onCompleted }: Props
             placeholder="e.g. Skeptical — I think this is overhyped"
           />
         </Field>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Author name">
-            <input
-              value={state.author_name}
-              onChange={(e) => patch({ author_name: e.target.value })}
-              disabled={busy}
-              className="input"
-            />
-          </Field>
-          <Field label="Title">
-            <input
-              value={state.author_title}
-              onChange={(e) => patch({ author_title: e.target.value })}
-              disabled={busy}
-              className="input"
-            />
-          </Field>
-          <Field label="Location" className="sm:col-span-2">
-            <input
-              value={state.author_location}
-              onChange={(e) => patch({ author_location: e.target.value })}
-              disabled={busy}
-              className="input"
-            />
-          </Field>
-        </div>
 
         <Field label="Audience">
           <div className="grid grid-cols-2 overflow-hidden rounded-md border border-border">
