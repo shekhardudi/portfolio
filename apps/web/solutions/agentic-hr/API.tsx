@@ -15,7 +15,9 @@ const CHAT_RESPONSE_COMPLETE = `// status === "complete" — policy Q&A answer
   "intent": "leave_balance",
   "citations": [],
   "request_id": null,
-  "status": "complete"
+  "status": "complete",
+  "session_id": "demo-7f42c1ab",
+  "latency_ms": 214
 }`;
 
 const CHAT_RESPONSE_POLICY = `// status === "complete" — policy query with citations
@@ -30,7 +32,9 @@ const CHAT_RESPONSE_POLICY = `// status === "complete" — policy query with cit
     }
   ],
   "request_id": null,
-  "status": "complete"
+  "status": "complete",
+  "session_id": "demo-7f42c1ab",
+  "latency_ms": 289
 }`;
 
 const CHAT_RESPONSE_PENDING = `// status === "pending_approval" — access request created
@@ -39,7 +43,9 @@ const CHAT_RESPONSE_PENDING = `// status === "pending_approval" — access reque
   "intent": "access_request",
   "citations": [],
   "request_id": "AR-1024",
-  "status": "pending_approval"
+  "status": "pending_approval",
+  "next_action": "manager_approval",
+  "latency_ms": 332
 }`;
 
 const PENDING_APPROVAL = `// GET /approvals — returns list[PendingApproval]
@@ -48,9 +54,12 @@ const PENDING_APPROVAL = `// GET /approvals — returns list[PendingApproval]
     "request_id": "AR-1024",
     "requester_email": "alexis.johnson@demo.local",
     "requester_name": "Alexis Johnson",
-    "packages": ["gitea-developer"],
+    "packages": [
+      "gitea-developer"
+    ],
     "status": "pending_approval",
-    "created_ts": "2026-05-06T08:14:22"
+    "created_ts": "2026-05-06T08:14:22",
+    "justification": "Needs repository access for sprint planning and code reviews."
   }
 ]`;
 
@@ -61,14 +70,31 @@ const APPROVAL_REQUEST = `POST /approvals/{request_id}
 }`;
 
 const APPROVAL_RESPONSE = `// On approval — fulfillment triggers automatically
-{ "request_id": "AR-1024", "status": "approved" }
+{
+  "request_id": "AR-1024",
+  "status": "approved",
+  "updated_ts": "2026-05-06T08:22:10"
+}
 
 // On approval with fulfillment error — access record preserved
-{ "request_id": "AR-1024", "status": "approved",
-  "fulfillment_error": "Gitea API timeout after 10s" }
+{
+  "request_id": "AR-1024",
+  "status": "approved",
+  "updated_ts": "2026-05-06T08:22:10",
+  "fulfillment_error": "Gitea API timeout after 10s"
+}
 
 // On denial
-{ "request_id": "AR-1024", "status": "denied" }`;
+{
+  "request_id": "AR-1024",
+  "status": "denied",
+  "updated_ts": "2026-05-06T08:22:10"
+}`;
+
+const HEALTH_RESPONSE = `// GET /health
+{
+  "status": "ok"
+}`;
 
 // ── curl quick-tests ────────────────────────────────────────────────────────
 
@@ -153,6 +179,28 @@ function Endpoint({
 }
 
 function CodeBlock({ code, label }: { code: string; label?: string }) {
+  const renderColoredCode = (input: string): string => {
+    const escaped = input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const tokenized = escaped.replace(
+      /(^\s*(?:\/\/|#).*$)|(\"(?:\\.|[^\"\\])*\"(?=\s*:))|(\"(?:\\.|[^\"\\])*\")|\b(true|false|null)\b|\b-?\d+(?:\.\d+)?\b/gm,
+      (match, comment, key, str, boolOrNull) => {
+        if (comment) return `<span style="color:#94a3b8;">${comment}</span>`;
+        if (key) return `<span style="color:#93c5fd;">${key}</span>`;
+        if (str) return `<span style="color:#86efac;">${str}</span>`;
+        if (boolOrNull) return `<span style="color:#fca5a5;">${match}</span>`;
+        return `<span style="color:#fcd34d;">${match}</span>`;
+      },
+    );
+
+    return tokenized
+      .replace(/\b(GET|POST|PATCH|DELETE)\b/g, '<span style="color:#c4b5fd;font-weight:700;">$1</span>')
+      .replace(/\$[A-Z_][A-Z0-9_]*/g, (m) => `<span style="color:#f9a8d4;">${m}</span>`);
+  };
+
   return (
     <div className="space-y-1.5">
       {label && (
@@ -160,8 +208,8 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
           {label}
         </p>
       )}
-      <pre className="overflow-x-auto rounded-xl border border-border bg-muted/30 p-4 text-[13px] leading-relaxed text-foreground">
-        <code>{code}</code>
+      <pre className="overflow-x-auto rounded-xl border border-cyan-500/30 bg-[#0b1220] p-4 text-[13px] leading-relaxed text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <code dangerouslySetInnerHTML={{ __html: renderColoredCode(code) }} />
       </pre>
     </div>
   );
@@ -282,9 +330,10 @@ export default function API() {
           <Endpoint
             method="GET"
             path="/health"
-            summary='Returns {"status": "ok"}. Used for load-balancer and container health probes.'
+            summary="Returns service health for load-balancer and container probes."
           />
         </div>
+        <CodeBlock label="GET /health response" code={HEALTH_RESPONSE} />
       </section>
 
       {/* Quick test */}

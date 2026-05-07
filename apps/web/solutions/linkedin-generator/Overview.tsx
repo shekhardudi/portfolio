@@ -4,55 +4,55 @@ import { Clock3, PenLine, Search, Sparkles, Users, Workflow } from 'lucide-react
 
 const FLOW = [
   {
-    name: 'Research Agent',
-    tag: 'Tavily',
+    name: 'Pulse Scout',
+    tag: 'ArXiv · HN · Tavily',
     description:
-      'Collects current signals, examples, and supporting context for the topic before drafting begins.',
+      'A true intelligence engine. Scans real-time signals across research papers, tech forums, and news to synthesize a factual Market Intelligence Briefing.',
   },
   {
-    name: 'Strategy Agent',
-    tag: 'Structure + Angle',
+    name: 'Agents',
+    tag: 'Researcher · Writer · Critic',
     description:
-      'Converts raw research into a clear narrative arc with authority positioning and audience intent.',
+      'A strict 3-agent writing room. Anchors on emotional beats, enforces a 5-part anatomical cadence, and actively scrubs out "LLM-smell" vocabulary.',
   },
   {
-    name: 'Writer Agent',
-    tag: 'Final Draft',
+    name: 'Visual Director',
+    tag: 'gpt-image-1',
     description:
-      'Produces the final post with voice constraints, cadence rules, and clarity edits tuned for LinkedIn.',
+      'A post-writing step that determines optimal image style (e.g., documentary still, witty gag) and builds a structured JSON plan for the final render.',
   },
 ];
 
 const PILLARS = [
   {
     icon: Workflow,
-    title: 'True Multi-Agent Pipeline',
-    body: 'The system separates research, strategic framing, and writing into distinct roles. This avoids single-pass LLM outputs that sound generic and underdeveloped.',
+    title: 'Dual-Engine Architecture',
+    body: 'Separates intelligence gathering (Pulse Scout) from content generation (Authority Crew), grounding output in real events instead of generic facts.',
+  },
+  {
+    icon: Sparkles,
+    title: 'Hard Constraints & Anti-Tropes',
+    body: 'Opinionated rules reject typical LLM patterns like em-dash pileups and abstract lists. A Critic agent cross-checks against "AI smells" before final output.',
+  },
+  {
+    icon: Users,
+    title: 'True Practitioner Voice',
+    body: 'The pipeline relies on a hard 5-part anatomical structure and specific emotional beats, forcing concrete points over broad motivational language.',
+  },
+  {
+    icon: PenLine,
+    title: 'Opinionated Visuals',
+    body: 'The Visual Director chooses between documentary, object portrait, or witty gags based on audience mapping, explicitly avoiding "stock-AI" aesthetics.',
   },
   {
     icon: Clock3,
     title: 'Async Job Model by Design',
-    body: 'Generation takes 60–180 seconds in real conditions. The API returns a job id immediately, then the frontend polls job status. This prevents long-held HTTP connections and timeout failures.',
-  },
-  {
-    icon: Users,
-    title: 'Leader-Angle Personalization',
-    body: 'Input includes a leadership angle and author context, so each post reflects a specific POV rather than template content.',
+    body: 'Generation takes 60–180 seconds. A FastAPI backend spins up async workers while the React UI polls statelessly. Zero timeout failures, zero long-held HTTP connections.',
   },
   {
     icon: Search,
-    title: 'Evidence-Backed Drafting',
-    body: 'Research grounding improves specificity and credibility. The model writes with concrete points instead of broad motivational language.',
-  },
-  {
-    icon: PenLine,
-    title: 'Production API Surface',
-    body: 'The service is exposed as clean async endpoints: submit generation, poll status, inspect jobs, and health-check. UI concerns stay separate from generation orchestration.',
-  },
-  {
-    icon: Sparkles,
-    title: 'Consistent Voice, Better Readability',
-    body: 'Prompt constraints enforce authority style, post rhythm, and hook quality while keeping outputs concise and readable on mobile feeds.',
+    title: 'Transparent Orchestration',
+    body: 'Maintains a stateless, robust job queue. Clean async endpoints guarantee UI concerns stay strictly isolated from the intensive multi-agent logic.',
   },
 ];
 
@@ -61,14 +61,10 @@ export default function Overview() {
     <div className="space-y-12">
       <div className="max-w-5xl space-y-4">
         <p className="text-lg leading-relaxed text-foreground md:text-justify">
-          LinkedIn Generator is a multi-agent content engine that produces high-authority LinkedIn
-          posts from a topic and leadership angle. It is built for production latency, not toy
-          demos: generation runs asynchronously through a job system with clear status tracking.
+          LinkedIn Auth is a dual-engine system that turns <span className="text-foreground italic">what is actually happening in AI this week</span> into high-authority LinkedIn content that reads like a real practitioner wrote it—paired with a scroll-stopping image that matches the emotion, not generic stock-AI art.
         </p>
         <p className="text-base leading-relaxed text-foreground/85 md:text-justify">
-          The architecture prioritizes quality and reliability together. Specialized agents handle
-          research, framing, and writing in sequence, while the API model ensures long-running
-          generation does not break UX or infrastructure limits.
+          It avoids the trap of single-prompt AI slop by combining a specialized research pipeline (Pulse Scout) with a highly constrained writing pipeline (Authority Crew) and structural art direction (Visual Director). Built on a robust FastAPI async polling infrastructure, it guarantees quality and reliability in real-world workflows.
         </p>
       </div>
 
@@ -116,13 +112,13 @@ export default function Overview() {
         </h3>
         <div className="flex flex-wrap gap-2">
           {[
-            'CrewAI',
+            'Next.js',
+            'crewAI',
             'FastAPI',
-            'OpenAI',
-            'Anthropic',
+            'GPT-5',
+            'Claude Opus & Sonnet',
             'Tavily',
-            'Async Job Orchestration',
-            'Polling-based Status API',
+            'Async Queues',
           ].map((item) => (
             <span
               key={item}

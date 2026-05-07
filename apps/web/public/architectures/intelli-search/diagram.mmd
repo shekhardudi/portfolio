@@ -1,0 +1,97 @@
+---
+config:
+  layout: dagre
+  theme: base
+  themeVariables:
+    background: '#0a0e17'
+    primaryColor: '#111827'
+    primaryTextColor: '#e5e7eb'
+    primaryBorderColor: '#22d3ee'
+    secondaryColor: '#1f2937'
+    tertiaryColor: '#0a0e17'
+    lineColor: '#64748b'
+    edgeLabelBackground: '#0a0e17'
+    clusterBkg: '#0d1320'
+    clusterBorder: '#334155'
+    titleColor: '#94a3b8'
+    fontFamily: 'Inter, system-ui, sans-serif'
+    fontSize: '18px'
+---
+flowchart LR
+ subgraph UserFlow[" "]
+    direction LR
+        U["👤 User"]
+        CL["🌐 Client"]
+        LB["🔀 Load Balancer"]
+        ECS["🟦 Container Service"]
+        REDIS["🟥 Redis Cache"]
+        GPT4MINI["🔹 OpenAI GPT4o-mini"]
+        GPT4["🔷 OpenAI GPT4o<br>Query-based Tool <br/> Selection"]
+        MODEL1["🧠 Model<br>Semantic Vectors"]
+        OPENSEARCH@{ label: "🟠 Opensearch<br>BM25 /<b r=\"\"> kNN</b>" }
+        TAVILY1["⚙️ Tavily Websearch <br/> Tool"]
+        SERP["⚙️ SERP Websearch <br/> Tool"]
+        TAVILY2["⚙️ Tavily LinkedIn <br/>Scraper Tool"]
+  end
+ subgraph DataFlow["Data Ingestion Pipeline"]
+    direction LR
+        DB["🗂️ Data"]
+        STEP1["Read Data in Chunks"]
+        STEP2["Clean Chunks"]
+        STEP3["Enrich Chunks"]
+        STEP4["Dense Vector Embeddings"]
+        STEP5["Parallel Bulk Indexing"]
+        MODEL2["🧠 Model"]
+  end
+
+    style UserFlow fill:transparent,stroke:transparent
+    style DataFlow fill:transparent,stroke:transparent
+
+    U -- Query --> CL
+    CL -- Request --> LB
+    LB -- Request --> ECS
+    ECS --> REDIS
+    ECS -- Regular|Semantic -->OPENSEARCH 
+    ECS -- Response --> CL
+    ECS <-. Intent Classification .-> GPT4MINI
+    ECS <-. Semantic Vectors .-> MODEL1
+    ECS --Agentic --> GPT4
+    GPT4 --> TAVILY1 & SERP & TAVILY2
+    DB --> STEP1
+    STEP1 --> STEP2
+    STEP2 --> STEP3
+    STEP3 --> STEP4
+    STEP4 --> STEP5
+    MODEL2 -. Embeddings .-> STEP4
+    STEP5 -. Indexed .-> OPENSEARCH
+
+    OPENSEARCH@{ shape: rect}
+
+    classDef client fill:#0c1820,stroke:#0e7490,stroke-width:1.5px,color:#a5d8e6
+    classDef ecs fill:#0a1628,stroke:#1d4ed8,stroke-width:1.5px,color:#a8c0e8
+    classDef redis fill:#1f0a0a,stroke:#991b1b,stroke-width:1.5px,color:#e8b0b0
+    classDef gpt fill:#15101f,stroke:#6b21a8,stroke-width:1.5px,color:#cdb4dd
+    classDef model fill:#0a1f12,stroke:#15803d,stroke-width:1.5px,color:#a8d8b8
+    classDef tool fill:#1a1208,stroke:#b45309,stroke-width:1.5px,color:#dcc28a
+    classDef database fill:#1f1408,stroke:#9a3412,stroke-width:1.5px,color:#dcb892
+    classDef process fill:#0d1320,stroke:#475569,stroke-width:1px,color:#94a3b8,stroke-dasharray:3 3
+
+     U:::client
+     CL:::client
+     LB:::client
+     ECS:::ecs
+     REDIS:::redis
+     GPT4MINI:::gpt
+     GPT4:::gpt
+     MODEL1:::model
+     OPENSEARCH:::tool
+     TAVILY1:::tool
+     SERP:::tool
+     TAVILY2:::tool
+     DB:::database
+     STEP1:::process
+     STEP2:::process
+     STEP3:::process
+     STEP4:::process
+     STEP5:::process
+     MODEL2:::model

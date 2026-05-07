@@ -78,3 +78,6 @@ services/*/outputs/
 services/intelli-search/data-pipeline/companies_sorted.csv
 
 sync.sh
+
+# --- Claude ---
+.claude/

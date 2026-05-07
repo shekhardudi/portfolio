@@ -2,24 +2,29 @@ import type { SolutionMeta } from '../_types';
 
 export const meta: SolutionMeta = {
   slug: 'intelli-search',
-  title: 'IntelliSearch',
+  title: 'Intelli Search',
   tagline:
-    'Hybrid search over millions of LinkedIn profiles — BM25 + kNN + agentic re-ranking, routed by an intent classifier.',
+    'Hybrid search over millions of company profiles — an intent classifier routes each query through BM25, vector kNN, or an agentic web-augmented pipeline.',
   category: 'search',
   status: 'live',
   featured: true,
   hero: { accent: 'from-cyan-500 to-blue-700', icon: 'Search' },
-  stack: ['FastAPI', 'OpenSearch', 'sentence-transformers', 'GPT-4o-mini', 'Redis'],
+  stack: ['FastAPI', 'OpenSearch', 'sentence-transformers', 'GPT-4o-mini', 'Redis', 'Tavily / SerpAPI'],
   highlights: [
-    'Three execution modes: regular / semantic / agentic',
-    'Reciprocal Rank Fusion across signals',
-    'Pre-warmed HNSW graph (5–7 GB) on cold start',
-    'Server-Sent Events for streaming results',
+    'LLM intent classifier picks regular / semantic / agentic per query',
+    'BM25 + vector kNN fused with Reciprocal Rank Fusion',
+    'Agentic mode plans, web-searches, and rewrites for off-corpus questions',
+    'Redis cache, circuit breakers, PII scrubbing on the hot path',
   ],
   tabs: ['overview', 'demo', 'architecture', 'api'],
   architecture: {
-    image: '/architectures/intelli-search.png',
+    strategy: 'mermaid',
+    image: '/architectures/intelli-search/diagram.png',
     alt: 'IntelliSearch architecture diagram',
+    mermaid: {
+      sourcePath: '/architectures/intelli-search/diagram.mmd',
+      theme: 'dark',
+    },
   },
   apiBaseEnvVar: 'NEXT_PUBLIC_INTELLI_SEARCH_API',
 };

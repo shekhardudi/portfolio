@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Github, Linkedin, ShieldCheck, Workflow, Boxes, Activity } from 'lucide-react';
+import { ArrowRight, Github, Linkedin, ShieldCheck, Workflow, Boxes, Activity, Scale } from 'lucide-react';
 import { SOLUTIONS } from '@/lib/solutions';
 import { SolutionCard } from '@/components/solution-card';
 
@@ -15,24 +15,26 @@ const PRINCIPLES = [
     body: 'Agents act, humans approve. Guardrails, structured outputs, and audit trails are first-class — not afterthoughts.',
   },
   {
-    icon: Boxes,
-    title: 'One box, one story',
-    body: 'Three products, one EC2 host, one Terraform stack. The boring infra is part of the demo.',
+    icon: Scale,
+    title: 'Scalability without complexity',
+    body: 'Three products, highly scalable backends. Extremely fault-tolerant reusable architecture patterns, not bespoke spaghetti.',
   },
   {
-    icon: Activity,
-    title: 'Observable by default',
-    body: 'OpenTelemetry traces, Prometheus metrics, structured logs. If something breaks, you can see why.',
+    icon: Workflow,
+    title: 'Engineered Intelligence',
+    body: 'Agentic where it needs to be, engineered everywhere else. No black boxes, no magic prompts — just solid systems.',
   },
 ];
 
 const STACK = [
   'Python · FastAPI',
   'LangGraph · CrewAI · LlamaIndex',
-  'OpenSearch · pgvector',
+  'OpenSearch · pgvector/postgres',
   'Next.js · Tailwind',
   'Docker · Terraform · AWS',
-  'OpenTelemetry · Prometheus',
+  'OpenTelemetry',
+  'Redis',
+  'OpenSource Integrations (Hugging Face, SerpAPI, etc.)',
 ];
 
 export default function HomePage() {
@@ -93,16 +95,8 @@ export default function HomePage() {
           {/* Stat strip */}
           <dl className="mt-12 grid max-w-2xl grid-cols-2 gap-6 sm:grid-cols-4">
             <div>
-              <dt className="text-xs uppercase tracking-wide text-muted-foreground">Years</dt>
-              <dd className="mt-1 text-2xl font-semibold">13+</dd>
-            </div>
-            <div>
               <dt className="text-xs uppercase tracking-wide text-muted-foreground">Live solutions</dt>
               <dd className="mt-1 text-2xl font-semibold">{SOLUTIONS.length}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-muted-foreground">Users served</dt>
-              <dd className="mt-1 text-2xl font-semibold">240k+</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-muted-foreground">Open source</dt>
@@ -120,7 +114,7 @@ export default function HomePage() {
               <h2 className="text-2xl font-semibold">Solutions</h2>
               <p className="mt-2 max-w-2xl text-muted-foreground">
                 Each card opens a working demo backed by a FastAPI service. Architecture
-                diagrams, API contracts, and lessons learned are documented inline &mdash;
+                diagrams and API contracts are documented inline &mdash;
                 so you can read the code, hit the endpoint, or just play with the UI.
               </p>
             </div>
@@ -193,7 +187,7 @@ export default function HomePage() {
             Working on something agentic?
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
-            I help teams move LLMs from clever notebook to billable system.
+            I help teams move ai and agentic systems from clever demos to billable systems.
             Always happy to compare notes, sanity-check architecture, or talk roles.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">

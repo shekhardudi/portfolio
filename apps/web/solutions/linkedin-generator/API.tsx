@@ -4,8 +4,12 @@
 
 const SCOUT_REQUEST = `POST /api/v1/scout
 {
-  "modules": ["community_sentiment", "technical_deep_dive",
-              "tooling_and_tactics", "frontier_lab_watch"],
+  "modules": [
+    "community_sentiment",
+    "technical_deep_dive",
+    "tooling_and_tactics",
+    "frontier_lab_watch"
+  ],
   "days": 14          // 0–730; 7 is default
 }`;
 
@@ -37,7 +41,8 @@ const PATCH_POST_REQUEST = `PATCH /api/v1/posts/{job_id}
 const JOB_ACK = `// 202 Accepted — both /scout and /posts return this immediately
 {
   "job_id": "c53e4f1a-…",
-  "status": "queued"
+  "status": "queued",
+  "eta_seconds": 25
 }`;
 
 const SCOUT_POLL = `// GET /api/v1/scout/{job_id}  — poll every 2 s
@@ -51,8 +56,12 @@ const SCOUT_POLL = `// GET /api/v1/scout/{job_id}  — poll every 2 s
     "phase": "fetch",
     "message": "Crawling arxiv papers…",
     "callbacks": [              // rolling last-60 live activity entries
-      { "ts": "…", "module": "community_sentiment",
-        "phase": "done", "message": "12 signals extracted" }
+      {
+        "ts": "…",
+        "module": "community_sentiment",
+        "phase": "done",
+        "message": "12 signals extracted"
+      }
     ]
   },
   "result": null,
@@ -68,46 +77,94 @@ const SCOUT_DONE = `// status === "completed"
     "lead": "One-sentence synthesis of the week's most important signal.",
     "signals": [
       {
-        "id": "sig_01", "category": "release",
+        "id": "sig_01",
+        "category": "release",
         "headline": "OpenAI ships structured outputs for Realtime API",
-        "summary": "…", "post_angle": "…",
-        "finding_ids": ["fnd_03"], "primary_module": "frontier_lab_watch"
+        "summary": "…",
+        "post_angle": "…",
+        "finding_ids": ["fnd_03"],
+        "primary_module": "frontier_lab_watch"
       }
     ],
     "findings": [
       {
-        "id": "fnd_03", "claim": "Structured outputs cut parsing errors by 40 %",
-        "source_url": "https://…", "source_label": "OpenAI blog",
-        "module": "frontier_lab_watch", "novelty": "new",
-        "why_it_matters": "…", "confidence": 0.91
+        "id": "fnd_03",
+        "claim": "Structured outputs cut parsing errors by 40 %",
+        "source_url": "https://…",
+        "source_label": "OpenAI blog",
+        "module": "frontier_lab_watch",
+        "novelty": "new",
+        "why_it_matters": "…",
+        "confidence": 0.91
       }
     ],
-    "themes": [ { "title": "…", "summary": "…" } ],
-    "tensions": [ { "title": "…", "summary": "…" } ],
+    "themes": [
+      {
+        "title": "…",
+        "summary": "…"
+      }
+    ],
+    "tensions": [
+      {
+        "title": "…",
+        "summary": "…"
+      }
+    ],
     "gaps": ["…"],
     "action_items": ["…"]
   },
-  "cost_breakdown": { "scout": { "calls": 18, "cost_usd": 0.043 } }
+  "cost_breakdown": {
+    "scout": {
+      "calls": 18,
+      "cost_usd": 0.043
+    }
+  }
 }`;
 
 const POST_DONE = `// GET /api/v1/posts/{job_id} — status === "completed"
 "progress": {
   "stage": "visual_director",   // queued|researching|writing|critique|visual_director
   "events": [
-    { "agent": "Researcher", "event": "tool_start",
-      "tool": "TavilySearch", "input": "…", "output": null, "ts": "…" },
-    { "agent": "Writer",     "event": "reasoning",
-      "thought": "The angle needs to open with the cost failure case…", "ts": "…" }
+    {
+      "agent": "Researcher",
+      "event": "tool_start",
+      "tool": "TavilySearch",
+      "input": "…",
+      "output": null,
+      "ts": "…"
+    },
+    {
+      "agent": "Writer",
+      "event": "reasoning",
+      "thought": "The angle needs to open with the cost failure case…",
+      "ts": "…"
+    }
   ]
 },
 "result": {
   "run_id": "20260506_153012",
   "post_draft": "# The hidden cost of agentic systems\\n…",
   "image_prompt": "Editorial photograph: lone server rack in an empty data centre…",
-  "emotional_beats": ["curiosity", "tension", "resolve"],
+  "emotional_beats": [
+    "curiosity",
+    "tension",
+    "resolve"
+  ],
+  "distribution": {
+    "channels": [
+      "linkedin"
+    ],
+    "best_posting_window": "Tue 09:00-11:00 AEST"
+  },
   "cost_breakdown": {
-    "crew":           { "calls": 6,  "cost_usd": 0.081 },
-    "visual_director":{ "calls": 1,  "cost_usd": 0.009 },
+    "crew": {
+      "calls": 6,
+      "cost_usd": 0.081
+    },
+    "visual_director": {
+      "calls": 1,
+      "cost_usd": 0.009
+    },
     "total_cost_usd": 0.090
   }
 }`;
@@ -123,7 +180,11 @@ const HEALTH_RESPONSE = `// GET /api/v1/health
 {
   "status": "ok",
   "version": "0.2.0",
-  "keys_present": { "openai": true, "anthropic": true, "tavily": true },
+  "keys_present": {
+    "openai": true,
+    "anthropic": true,
+    "tavily": true
+  },
   "scout_backend": "openai/gpt-4o-mini",
   "ollama_reachable": null
 }`;
@@ -217,6 +278,28 @@ function Endpoint({
 }
 
 function CodeBlock({ code, label }: { code: string; label?: string }) {
+  const renderColoredCode = (input: string): string => {
+    const escaped = input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const tokenized = escaped.replace(
+      /(^\s*(?:\/\/|#).*$)|(\"(?:\\.|[^\"\\])*\"(?=\s*:))|(\"(?:\\.|[^\"\\])*\")|\b(true|false|null)\b|\b-?\d+(?:\.\d+)?\b/gm,
+      (match, comment, key, str, boolOrNull) => {
+        if (comment) return `<span style="color:#94a3b8;">${comment}</span>`;
+        if (key) return `<span style="color:#93c5fd;">${key}</span>`;
+        if (str) return `<span style="color:#86efac;">${str}</span>`;
+        if (boolOrNull) return `<span style="color:#fca5a5;">${match}</span>`;
+        return `<span style="color:#fcd34d;">${match}</span>`;
+      },
+    );
+
+    return tokenized
+      .replace(/\b(GET|POST|PATCH|DELETE)\b/g, '<span style="color:#c4b5fd;font-weight:700;">$1</span>')
+      .replace(/\$[A-Z_][A-Z0-9_]*/g, (m) => `<span style="color:#f9a8d4;">${m}</span>`);
+  };
+
   return (
     <div className="space-y-1.5">
       {label && (
@@ -224,8 +307,8 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
           {label}
         </p>
       )}
-      <pre className="overflow-x-auto rounded-xl border border-border bg-muted/30 p-4 text-[13px] leading-relaxed text-foreground">
-        <code>{code}</code>
+      <pre className="overflow-x-auto rounded-xl border border-cyan-500/30 bg-[#0b1220] p-4 text-[13px] leading-relaxed text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <code dangerouslySetInnerHTML={{ __html: renderColoredCode(code) }} />
       </pre>
     </div>
   );

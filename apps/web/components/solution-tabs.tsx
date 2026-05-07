@@ -4,7 +4,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import type { SolutionPlugin } from '@/solutions/_types';
 import { cn } from '@/lib/utils';
 import { DemoErrorBoundary } from '@/components/demo-error-boundary';
-import { ArchitectureImagePanel } from '@/components/architecture-image-panel';
+import { ArchitectureRenderer } from '@/components/architecture-renderer';
 
 const TAB_LABELS: Record<string, string> = {
   overview: 'Overview',
@@ -17,12 +17,8 @@ const TAB_LABELS: Record<string, string> = {
 export function SolutionTabs({ solution }: { solution: SolutionPlugin }) {
   const tabs = solution.meta.tabs ?? ['overview', 'demo', 'architecture'];
   const Demo = solution.Demo;
-  const Architecture = solution.Architecture;
   const CustomOverview = solution.Overview;
   const CustomApi = solution.API;
-  const architectureImage = solution.meta.architecture?.image;
-  const architectureAlt =
-    solution.meta.architecture?.alt ?? `${solution.meta.title} architecture`;
 
   return (
     <Tabs.Root defaultValue={tabs[0]} className="w-full">
@@ -59,13 +55,7 @@ export function SolutionTabs({ solution }: { solution: SolutionPlugin }) {
 
       {tabs.includes('architecture') && (
         <Tabs.Content value="architecture" className="pt-8">
-          {architectureImage ? (
-            <ArchitectureImagePanel src={architectureImage} alt={architectureAlt} />
-          ) : Architecture ? (
-            <Architecture />
-          ) : (
-            <Placeholder label="Architecture" />
-          )}
+          <ArchitectureRenderer solution={solution} />
         </Tabs.Content>
       )}
 

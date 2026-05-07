@@ -2,21 +2,28 @@ import type { SolutionMeta } from '../_types';
 
 export const meta: SolutionMeta = {
   slug: 'linkedin-generator',
-  title: 'LinkedIn Generator',
+  title: 'LinkedIn Auth',
   tagline:
-    'Multi-agent CrewAI system that drafts authority-style LinkedIn posts from a topic + leader angle. Async job model.',
+    'Two-stage pipeline — Pulse Scout briefs from the open web, Authority Crew turns a chosen angle into a posted-ready draft and cover image.',
   category: 'content',
   status: 'live',
   featured: true,
   hero: { accent: 'from-amber-500 to-orange-700', icon: 'PenLine' },
-  stack: ['CrewAI', 'FastAPI', 'OpenAI', 'Anthropic', 'Tavily'],
+  stack: ['CrewAI', 'FastAPI', 'OpenAI', 'Anthropic', 'Tavily', 'gpt-image-1'],
   highlights: [
-    'Async POST /generate → poll GET /jobs/{id}',
-    'Multi-agent reasoning with web research',
-    'Configurable author voice + cadence',
-    '60-180s typical run; survives nginx timeouts',
+    'Pulse Scout: Agentic Market Analyst for AI trends, across multiple signals and sources',
+    'Multi-agent Crew: Researcher → Writer → Critic → Visual Director',
+    'Async job API with streaming progress; survives long timeouts',
+    'Per-IP rate limits, cover image via gpt-image-1, configurable voice',
   ],
   tabs: ['overview', 'demo', 'architecture', 'api'],
+  architecture: {
+    strategy: 'mermaid',
+    mermaid: {
+      sourcePath: '/architectures/linkedin-generator/diagram.mmd',
+      theme: 'dark',
+    },
+  },
   apiBaseEnvVar: 'NEXT_PUBLIC_LINKEDIN_API',
 };
 

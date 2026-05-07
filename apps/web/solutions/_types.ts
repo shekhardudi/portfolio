@@ -23,8 +23,18 @@ export interface SolutionMeta {
   // Anchor for tabs the solution provides — order is preserved
   tabs?: readonly ('overview' | 'demo' | 'architecture' | 'api' | 'lessons')[];
   architecture?: {
+    // Rendering preference for the architecture tab.
+    strategy?: 'component' | 'mermaid' | 'image';
     image?: string;           // public asset path, e.g. "/architectures/intelli-search.png"
     alt?: string;
+    mermaid?: {
+      // Inline Mermaid source string.
+      source?: string;
+      // Path to Mermaid source served from /public, e.g.
+      // "/architectures/intelli-search/diagram.mmd".
+      sourcePath?: string;
+      theme?: 'default' | 'dark' | 'neutral' | 'forest' | 'base';
+    };
   };
   apiBaseEnvVar: string;      // e.g. NEXT_PUBLIC_INTELLI_SEARCH_API
 }

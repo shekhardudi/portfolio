@@ -1,0 +1,83 @@
+---
+config:
+  layout: dagre
+  theme: base
+  themeVariables:
+    background: '#0a0e17'
+    primaryColor: '#111827'
+    primaryTextColor: '#e5e7eb'
+    primaryBorderColor: '#b45309'
+    secondaryColor: '#1f2937'
+    tertiaryColor: '#0a0e17'
+    lineColor: '#475569'
+    edgeLabelBackground: '#0a0e17'
+    clusterBkg: '#0d1320'
+    clusterBorder: '#334155'
+    titleColor: '#94a3b8'
+    fontFamily: 'Inter, system-ui, sans-serif'
+    fontSize: '14px'
+---
+flowchart LR
+  subgraph API [API Layer]
+    direction TB
+    C(["POST /generate"])
+    POLL["GET /jobs/:id"]
+    J[("Job Queue")]
+  end
+
+  subgraph ScoutBlock [Pulse Scout · Briefing]
+    direction TB
+    SCAN["6 Scanners<br/>frontier · sentiment · deep-dive<br/>tooling · long-form · experts"]
+    BRIEF(["Weekly Briefing"])
+  end
+
+  subgraph CrewBlock [Authority Crew · CrewAI]
+    direction TB
+    CREW["Orchestrator"]
+    RES["Researcher"]
+    STRAT["Strategist"]
+    WRITER["Writer"]
+  end
+
+  subgraph VisualBlock [Visual Director]
+    direction TB
+    VPLAN["Image Plan"]
+    GPTIMG["gpt-image-1"]
+  end
+
+  subgraph Tools [External Services]
+    direction TB
+    TAV["Tavily Web Research"]
+    LLM["LLM Routing<br/>OpenAI · Anthropic"]
+  end
+
+  POST(["Draft Post"])
+  IMG(["Cover Image"])
+
+  C --> J
+  POLL --> J
+  J --> SCAN
+  SCAN --> BRIEF
+  BRIEF -- topic + angle --> CREW
+  J --> CREW
+  CREW --> RES
+  CREW --> STRAT
+  CREW --> WRITER
+  RES --> TAV
+  STRAT --> LLM
+  WRITER --> LLM
+  CREW --> POST
+  POST --> VPLAN
+  VPLAN --> GPTIMG
+  GPTIMG --> IMG
+  VPLAN -.- LLM
+
+  classDef primary fill:#1a1208,stroke:#b45309,stroke-width:1.5px,color:#fcd9a4
+  classDef node fill:#111827,stroke:#334155,stroke-width:1px,color:#cbd5e1
+  classDef external fill:#0d1421,stroke:#475569,stroke-width:1px,stroke-dasharray:4 3,color:#94a3b8
+  classDef store fill:#1a1208,stroke:#92400e,stroke-width:1px,color:#fcd9a4
+
+  class C,POST,IMG,BRIEF primary
+  class POLL,SCAN,CREW,RES,STRAT,WRITER,VPLAN,GPTIMG node
+  class TAV,LLM external
+  class J store

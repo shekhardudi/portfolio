@@ -27,7 +27,7 @@ const FEATURES = [
   {
     icon: Brain,
     title: 'Intent Classification',
-    body: 'Every query passes through GPT-4o-mini before touching the index. The classifier decides which execution mode — regular, semantic, or agentic — fits the query, then routes accordingly. Confident queries go straight to the index; ambiguous ones land in semantic mode by default.',
+    body: 'Every query passes through an GPT-4o-mini before touching the index. The classifier decides which execution mode — regular, semantic, or agentic — fits the query, then routes accordingly. Confident queries go straight to the index; ambiguous ones land in semantic mode by default.',
   },
   {
     icon: GitMerge,
@@ -132,7 +132,6 @@ export default function Overview() {
             'sentence-transformers (all-MiniLM-L6-v2)',
             'GPT-4o-mini (classifier)',
             'GPT-4o (agentic)',
-            'LangGraph',
             'Redis (facet cache)',
             'Tavily (web + LinkedIn tools)',
             'SSE streaming',

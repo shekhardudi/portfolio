@@ -1,0 +1,117 @@
+---
+config:
+  layout: elk
+  theme: base
+  themeVariables:
+    background: '#0a0e17'
+    primaryColor: '#111827'
+    primaryTextColor: '#e5e7eb'
+    primaryBorderColor: '#22d3ee'
+    secondaryColor: '#1f2937'
+    tertiaryColor: '#0a0e17'
+    lineColor: '#64748b'
+    edgeLabelBackground: '#0a0e17'
+    clusterBkg: '#0d1320'
+    clusterBorder: '#334155'
+    titleColor: '#94a3b8'
+    fontFamily: 'Inter, system-ui, sans-serif'
+    fontSize: '18px'
+  elk:
+    nodePlacementStrategy: LINEAR_SEGMENTS
+---
+%%{init: {'flowchart': {'curve': 'stepAfter'}}}%%
+flowchart TD
+    AuthUser["👤 Authenticated User"]
+    ChatUI["💬 Chat Interface"]
+    BackendAPI["⚙️ Backend API<br/>Lagraph+FASTAPI"]
+    LLMIntent["🤖 LLM<br/>Claude Haiku/OpenAI<br/>gpt 4o-mini"]
+    DBMcp["🗄️ DB MCP"]
+    ReqGate["🚪 Create<br/>request/Approval<br/>Gate"]
+    Manager["👤 Manager<br/>✓"]
+    
+    HRLeave["📋 HR Leave"]
+    PolicyRAG["📚 Policy RAG"]
+    ITProvisioning["💻 IT Provisioning"]
+    LLMPolicy["🤖 LLM<br/>Claude Sonnet/OpenAI<br/>gpt 4o"]
+    
+    HRISClient["🗄️ HRIS MCP Client<br/>Read only"]
+    VectorClient["🗄️ Vector search<br/>MCP Client<br/>Hybrid Search"]
+    GitClient["🗄️ Git MCP Client"]
+    SlackClient["🗄️ Slack MCP Client"]
+    
+    HRIS["📊 HRIS"]
+    VectorStore["🗃️ Vector Store"]
+    Git["🔗 Git"]
+    Slack["💬 Slack"]
+    
+    PolicyDocs["📄 Policy Documents"]
+    Chunking["✂️ Chunking"]
+    Embedding["🧠 EMBEDDING"]
+    
+    AuthUser -->|Request| ChatUI
+    ChatUI -->|Request| BackendAPI
+    BackendAPI -->|Structured Response| ChatUI
+    BackendAPI -->|Classify <br/>Intent| LLMIntent
+    LLMIntent --->|Intent| BackendAPI
+    
+    BackendAPI -->|IT Requests| DBMcp
+    DBMcp --> ReqGate
+    ReqGate -->|Approval| Manager
+    Manager -->|Trigger Fulfillment| BackendAPI
+
+    BackendAPI --> HRLeave
+    BackendAPI --> ITProvisioning
+    BackendAPI --> PolicyRAG
+
+    HRLeave --->|Deterministic Flow| HRISClient
+    ITProvisioning --> LLMPolicy
+    PolicyRAG --> LLMPolicy
+
+  
+    
+    LLMPolicy --> GitClient
+    LLMPolicy --> SlackClient
+    LLMPolicy --> VectorClient
+    
+    HRISClient --> HRIS
+    VectorClient --> VectorStore
+    GitClient --> Git
+    SlackClient --> Slack
+
+    
+    PolicyDocs -->|Versioned Documents + embeddings| Chunking
+    Chunking --> Embedding
+    Embedding --> VectorStore
+
+    classDef user fill:#0c1820,stroke:#0e7490,stroke-width:1.5px,color:#a5d8e6
+    classDef api fill:#0a1628,stroke:#1d4ed8,stroke-width:1.5px,color:#a8c0e8
+    classDef llm fill:#15101f,stroke:#6b21a8,stroke-width:1.5px,color:#cdb4dd
+    classDef gate fill:#1f1408,stroke:#b45309,stroke-width:1.5px,color:#dcc28a
+    classDef domain fill:#0a1f12,stroke:#15803d,stroke-width:1.5px,color:#a8d8b8
+    classDef mcp fill:#1f0a18,stroke:#9d174d,stroke-width:1.5px,color:#dcb0c8
+    classDef store fill:#1f1408,stroke:#9a3412,stroke-width:1.5px,color:#dcb892
+    classDef ingest fill:#0d1320,stroke:#475569,stroke-width:1px,color:#94a3b8,stroke-dasharray:3 3
+
+    AuthUser:::user
+    Manager:::user
+    ChatUI:::user
+    BackendAPI:::api
+    LLMIntent:::llm
+    LLMPolicy:::llm
+    DBMcp:::gate
+    ReqGate:::gate
+    HRLeave:::domain
+    PolicyRAG:::domain
+    ITProvisioning:::domain
+    HRISClient:::mcp
+    VectorClient:::mcp
+    GitClient:::mcp
+    SlackClient:::mcp
+    HRIS:::store
+    VectorStore:::store
+    Git:::store
+    Slack:::store
+    PolicyDocs:::ingest
+    Chunking:::ingest
+    Embedding:::ingest
+

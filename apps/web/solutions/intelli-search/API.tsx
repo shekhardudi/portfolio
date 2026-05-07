@@ -5,7 +5,7 @@
 const REGULAR_REQUEST = `// Regular — short, specific (routes to BM25 lexical search)
 POST /api/search/intelligent
 {
-  "query": "Apple Inc",
+  "query": "Canva Australia",
   "limit": 10,
   "page": 1,
   "include_reasoning": true
@@ -14,21 +14,28 @@ POST /api/search/intelligent
 const SEMANTIC_REQUEST = `// Semantic — conceptual / natural language (routes to vector k-NN + RRF)
 POST /api/search/intelligent
 {
-  "query": "Tech companies in France building enterprise copilots",
+  "query": "Tech companies in Australia building enterprise copilots",
   "limit": 20,
   "page": 1,
   "include_reasoning": true,
   "filters": {
-    "country": "France",
-    "industries": ["Artificial Intelligence", "Enterprise Software"],
+    "country": "Australia",
+    "industries": [
+      "Artificial Intelligence",
+      "Enterprise Software"
+    ],
     "year_from": 2015
+  },
+  "sort": {
+    "field": "relevance_score",
+    "order": "desc"
   }
 }`;
 
 const AGENTIC_REQUEST = `// Agentic — time-sensitive / external data (routes to tool-calling agent)
 POST /api/search/intelligent
 {
-  "query": "companies that raised Series B funding recently",
+  "query": "UK companies that raised Series B funding recently",
   "limit": 15,
   "page": 1,
   "include_reasoning": true
@@ -36,37 +43,55 @@ POST /api/search/intelligent
 
 const SEARCH_RESPONSE = `// 200 OK
 {
-  "query": "Tech companies in France",
+  "query": "Tech companies in Australia",
   "status": "success",
+  "request_id": "req_34a9c91f",
   "results": [
     {
       "id": "c_8f2a1",
-      "name": "Mistral AI",
-      "domain": "mistral.ai",
+      "name": "Canva",
+      "domain": "canva.com",
       "industry": "Artificial Intelligence",
-      "country": "France",
-      "locality": "Paris",
+      "country": "Australia",
+      "locality": "Sydney",
       "relevance_score": 0.97,
       "search_method": "semantic",
       "ranking_source": "hybrid-rrf",
-      "matching_reason": "French LLM startup; matches conceptual AI query.",
-      "year_founded": 2023,
-      "size_range": "51-200",
-      "current_employee_estimate": 140,
-      "linkedin_url": "https://linkedin.com/company/mistral-ai"
+      "matching_reason": "Australian SaaS/AI company; matches enterprise copilot intent.",
+      "year_founded": 2013,
+      "size_range": "5001-10000",
+      "current_employee_estimate": 4800,
+      "linkedin_url": "https://linkedin.com/company/canva"
     }
   ],
   "metadata": {
     "trace_id": "trc_9a3b…",
-    "query_classification": { "category": "semantic", "confidence": 0.93 },
+    "query_classification": {
+      "category": "semantic",
+      "confidence": 0.93
+    },
     "search_execution": {
       "strategy": "Semantic-Hybrid-RRF",
-      "score_range": { "min": 0.61, "max": 0.97 }
+      "score_range": {
+        "min": 0.61,
+        "max": 0.97
+      },
+      "cache": {
+        "hit": false,
+        "ttl_seconds": 0
+      }
     },
     "total_results": 18,
     "response_time_ms": 142,
     "page": 1,
-    "limit": 20
+    "limit": 20,
+    "applied_filters": {
+      "country": "Australia",
+      "industries": [
+        "Artificial Intelligence",
+        "Enterprise Software"
+      ]
+    }
   }
 }`;
 
@@ -74,30 +99,49 @@ const SEARCH_RESPONSE = `// 200 OK
 
 const STREAM_REQUEST = `POST /api/search/intelligent/stream
 {
-  "query": "companies that raised funding recently",
+  "query": "US cybersecurity startups that raised funding recently",
   "limit": 15,
   "page": 1,
   "include_reasoning": true
 }`;
 
 const STREAM_EVENTS = `// Server-Sent Events — connect with EventSource
-data: {"type":"progress","phase":"started","message":"Search started…"}
+data: {
+  "type": "progress",
+  "phase": "started",
+  "message": "Search started…"
+}
 : heartbeat
-data: {"type":"progress","phase":"classify","message":"Query classified as agentic"}
-data: {"type":"progress","phase":"fetch","message":"Fetching recent funding rounds…"}
-data: {"type":"results","data":{ ...SearchResponse... }}
+data: {
+  "type": "progress",
+  "phase": "classify",
+  "message": "Query classified as agentic"
+}
+data: {
+  "type": "progress",
+  "phase": "fetch",
+  "message": "Fetching recent funding rounds…"
+}
+data: {
+  "type": "results",
+  "data": { ...SearchResponse... }
+}
 
 // On failure
-data: {"type":"error","detail":"Search failed."}`;
+data: {
+  "type": "error",
+  "detail": "Search failed."
+}`;
 
 // ── Basic search ────────────────────────────────────────────────────────────
 
 const BASIC_REQUEST = `POST /api/search/basic
 {
-  "query": "fintech",
+  "query": "UK fintech",
   "filters": {
     "industry": "Financial Services",
     "country": "United Kingdom",
+    "locality": "London",
     "size_range": "51-200"
   },
   "limit": 20,
@@ -107,23 +151,43 @@ const BASIC_REQUEST = `POST /api/search/basic
 // ── Diagnostics responses ───────────────────────────────────────────────────
 
 const HEALTH_RESPONSE = `// GET /api/search/health
-{ "status": "healthy", "service": "search-orchestrator", "version": "2.0.0" }`;
+{
+  "status": "healthy",
+  "service": "search-orchestrator",
+  "version": "2.0.0"
+}`;
 
 const FEATURES_RESPONSE = `// GET /api/search/features
 {
   "features": {
-    "query_classification": true, "semantic_search": true,
-    "agentic_search": true, "result_caching": true, "tracing": true
+    "query_classification": true,
+    "semantic_search": true,
+    "agentic_search": true,
+    "result_caching": true,
+    "tracing": true
   },
   "models": {
     "classifier": "gpt-4o-mini",
     "embedding": "text-embedding-3-small",
-    "embedding_dimension": 768
+    "embedding_dimension": 768,
+    "reranker": "none"
   },
   "search_strategies": [
-    { "name": "Regular",  "type": "regular",  "latency_ms": "10-50"   },
-    { "name": "Semantic", "type": "semantic", "latency_ms": "50-200"  },
-    { "name": "Agentic",  "type": "agentic",  "latency_ms": "100-500+" }
+    {
+      "name": "Regular",
+      "type": "regular",
+      "latency_ms": "10-50"
+    },
+    {
+      "name": "Semantic",
+      "type": "semantic",
+      "latency_ms": "50-200"
+    },
+    {
+      "name": "Agentic",
+      "type": "agentic",
+      "latency_ms": "100-500+"
+    }
   ]
 }`;
 
@@ -132,7 +196,7 @@ const FEATURES_RESPONSE = `// GET /api/search/features
 const CURL_REGULAR = `# Regular (BM25 lexical)
 curl -sX POST "$API/api/search/intelligent" \\
   -H "Content-Type: application/json" \\
-  -d '{"query":"Stripe","limit":5}' | jq .metadata`;
+  -d '{"query":"Canva Australia","limit":5}' | jq .metadata`;
 
 const CURL_SEMANTIC = `# Semantic with filters (vector k-NN + RRF)
 curl -sX POST "$API/api/search/intelligent" \\
@@ -147,7 +211,7 @@ curl -sX POST "$API/api/search/intelligent" \\
 const CURL_STREAM = `# Agentic search via SSE (curl -N disables buffering)
 curl -N -sX POST "$API/api/search/intelligent/stream" \\
   -H "Content-Type: application/json" \\
-  -d '{"query":"companies that raised Series B recently","limit":10}'`;
+  -d '{"query":"UK SaaS companies that raised Series B recently","limit":10}'`;
 
 const CURL_FACETS = `# Populate country dropdown
 curl "$API/api/search/facets/countries" | jq .total
@@ -203,6 +267,28 @@ function Endpoint({
 }
 
 function CodeBlock({ code, label }: { code: string; label?: string }) {
+  const renderColoredCode = (input: string): string => {
+    const escaped = input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const tokenized = escaped.replace(
+      /(^\s*(?:\/\/|#).*$)|(\"(?:\\.|[^\"\\])*\"(?=\s*:))|(\"(?:\\.|[^\"\\])*\")|\b(true|false|null)\b|\b-?\d+(?:\.\d+)?\b/gm,
+      (match, comment, key, str, boolOrNull) => {
+        if (comment) return `<span style="color:#94a3b8;">${comment}</span>`;
+        if (key) return `<span style="color:#93c5fd;">${key}</span>`;
+        if (str) return `<span style="color:#86efac;">${str}</span>`;
+        if (boolOrNull) return `<span style="color:#fca5a5;">${match}</span>`;
+        return `<span style="color:#fcd34d;">${match}</span>`;
+      },
+    );
+
+    return tokenized
+      .replace(/\b(GET|POST|PATCH|DELETE)\b/g, '<span style="color:#c4b5fd;font-weight:700;">$1</span>')
+      .replace(/\$[A-Z_][A-Z0-9_]*/g, (m) => `<span style="color:#f9a8d4;">${m}</span>`);
+  };
+
   return (
     <div className="space-y-1.5">
       {label && (
@@ -210,8 +296,8 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
           {label}
         </p>
       )}
-      <pre className="overflow-x-auto rounded-xl border border-border bg-muted/30 p-4 text-[13px] leading-relaxed text-foreground">
-        <code>{code}</code>
+      <pre className="overflow-x-auto rounded-xl border border-cyan-500/30 bg-[#0b1220] p-4 text-[13px] leading-relaxed text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <code dangerouslySetInnerHTML={{ __html: renderColoredCode(code) }} />
       </pre>
     </div>
   );
