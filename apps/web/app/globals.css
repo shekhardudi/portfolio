@@ -12,8 +12,6 @@
     --accent-foreground: 222 47% 11%;
     --border: 214 32% 88%;
     --ring: 215 20% 65%;
-    --font-sans: 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   }
 
   .dark {

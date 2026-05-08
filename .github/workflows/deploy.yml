@@ -27,7 +27,7 @@ permissions:
 env:
   AWS_REGION: ap-southeast-2
   INSTANCE_TAG_VALUE: portfolio-prod-host
-  AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN != '' && secrets.AWS_DEPLOY_ROLE_ARN || vars.AWS_DEPLOY_ROLE_ARN }}
+  AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN || vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::977688665146:role/portfolio-prod-gha-deploy' }}
 
 jobs:
   deploy:
@@ -41,10 +41,10 @@ jobs:
           set -euo pipefail
           if [[ -z "${AWS_DEPLOY_ROLE_ARN:-}" ]]; then
             echo "Missing AWS deploy role ARN." >&2
-            echo "Set either repository secret AWS_DEPLOY_ROLE_ARN or repository variable AWS_DEPLOY_ROLE_ARN." >&2
+            echo "Set either repository secret AWS_DEPLOY_ROLE_ARN or repository variable AWS_DEPLOY_ROLE_ARN, or keep the default fallback in deploy.yml." >&2
             exit 1
           fi
-          echo "Using role ARN from secret/variable: ${AWS_DEPLOY_ROLE_ARN}"
+          echo "Using role ARN: ${AWS_DEPLOY_ROLE_ARN}"
 
       - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
