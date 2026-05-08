@@ -7,6 +7,7 @@ ARG NODE_VERSION=20-alpine
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
 RUN corepack enable
+RUN corepack prepare pnpm@10.33.2 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
@@ -14,6 +15,7 @@ RUN pnpm install --frozen-lockfile
 FROM node:${NODE_VERSION} AS builder
 WORKDIR /app
 RUN corepack enable
+RUN corepack prepare pnpm@10.33.2 --activate
 
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_INTELLI_SEARCH_API

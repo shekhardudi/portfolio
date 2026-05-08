@@ -27,15 +27,29 @@ permissions:
 env:
   AWS_REGION: ap-southeast-2
   INSTANCE_TAG_VALUE: portfolio-prod-host
+  AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN != '' && secrets.AWS_DEPLOY_ROLE_ARN || vars.AWS_DEPLOY_ROLE_ARN }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
+      - name: Validate OIDC role ARN input
+        run: |
+          set -euo pipefail
+          if [[ -z "${AWS_DEPLOY_ROLE_ARN:-}" ]]; then
+            echo "Missing AWS deploy role ARN." >&2
+            echo "Set either repository secret AWS_DEPLOY_ROLE_ARN or repository variable AWS_DEPLOY_ROLE_ARN." >&2
+            exit 1
+          fi
+          echo "Using role ARN from secret/variable: ${AWS_DEPLOY_ROLE_ARN}"
+
       - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Resolve EC2 instance id by tag
