@@ -18,7 +18,7 @@ case "$TARGET" in
   *) echo "unknown target: $TARGET (expected all|web|services)" >&2; exit 2 ;;
 esac
 
-REPO=/home/ec2-user/portfolio
+REPO=/opt/portfolio
 
 cd "$REPO"
 git fetch origin --prune

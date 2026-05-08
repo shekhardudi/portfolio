@@ -65,7 +65,7 @@ jobs:
           # then run it with the requested ref + target. We pull main to make
           # sure we have the freshest copy of the deploy script before
           # checking out a potentially older ref to deploy.
-          CMD="sudo -u ec2-user -H bash -lc 'cd /home/ec2-user/portfolio && git fetch origin && git checkout main && git pull --ff-only origin main && bash scripts/single-ec2/deploy-on-ec2.sh \"${REF}\" \"${TARGET}\"'"
+          CMD="sudo -u ec2-user -H bash -lc 'cd /opt/portfolio && git fetch origin && git checkout main && git pull --ff-only origin main && bash scripts/single-ec2/deploy-on-ec2.sh \"${REF}\" \"${TARGET}\"'"
           jq -n --arg c "$CMD" '{commands:[$c]}' > /tmp/ssm-params.json
 
       - name: Send SSM deploy command

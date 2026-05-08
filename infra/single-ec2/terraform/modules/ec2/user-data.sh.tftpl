@@ -32,16 +32,16 @@ curl -sSL "https://github.com/docker/compose/releases/download/v2.27.0/docker-co
 chmod +x "$DOCKER_PLUGIN_DIR/docker-compose"
 
 # ---- clone repo -----------------------------------------------------------
+REPO=/opt/portfolio
+install -d -m 755 -o ec2-user -g ec2-user /opt
 sudo -u ec2-user -H bash <<EOF
-cd /home/ec2-user
+cd /opt
 if [[ ! -d portfolio ]]; then
   git clone ${github_repo_url} portfolio
 fi
 cd portfolio
 git pull --ff-only || true
 EOF
-
-REPO=/home/ec2-user/portfolio
 
 # ---- hydrate env files from SSM ------------------------------------------
 mkdir -p $REPO/infra/single-ec2/docker/env
