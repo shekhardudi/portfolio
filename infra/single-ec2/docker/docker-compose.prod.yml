@@ -74,7 +74,7 @@ services:
 
   intelli-search:
     build:
-      context: ../../services/intelli-search
+      context: /opt/portfolio/services/intelli-search
       dockerfile: Dockerfile
     container_name: portfolio-intelli-search
     env_file: env/intelli-search.env

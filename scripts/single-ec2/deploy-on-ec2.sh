@@ -10,6 +10,7 @@ set -euxo pipefail
 
 REF="${1:-main}"
 TARGET="${2:-all}"
+DOCKER_NO_CACHE="${DOCKER_NO_CACHE:-1}"
 
 case "$TARGET" in
   all)      COMPOSE_TARGETS="" ;;
@@ -28,9 +29,15 @@ cd "$REPO"
 if [[ "${SKIP_GIT_SYNC:-0}" == "1" ]]; then
   echo "SKIP_GIT_SYNC=1; using existing files in $REPO"
 else
-  git fetch origin --prune
-  git checkout "$REF"
-  git pull --ff-only origin "$REF" || true
+  git fetch origin --prune --tags
+
+  # Branch refs: use remote-tracking branch so host local state can't go stale.
+  if git show-ref --verify --quiet "refs/remotes/origin/$REF"; then
+    git checkout -B "$REF" "origin/$REF"
+  else
+    # Tag/SHA refs: detach checkout to exact object requested.
+    git checkout --detach "$REF"
+  fi
 fi
 
 cd "$REPO/infra/single-ec2/docker"
@@ -38,9 +45,16 @@ sudo cp nginx/nginx.conf /etc/nginx/nginx.conf
 sudo nginx -t
 sudo nginx -s reload
 
+# Build options: default to fresh builds for CI/CD correctness.
+BUILD_FLAGS=(--pull)
+if [[ "$DOCKER_NO_CACHE" == "1" ]]; then
+  BUILD_FLAGS+=(--no-cache)
+fi
+
 # shellcheck disable=SC2086  # intentional word-splitting on $COMPOSE_TARGETS
 docker compose -f docker-compose.prod.yml pull $COMPOSE_TARGETS || true
-docker compose -f docker-compose.prod.yml up -d --build $COMPOSE_TARGETS
+docker compose -f docker-compose.prod.yml build "${BUILD_FLAGS[@]}" $COMPOSE_TARGETS
+docker compose -f docker-compose.prod.yml up -d --no-build --force-recreate $COMPOSE_TARGETS
 
 docker system prune -f
 echo "deploy complete: ref=$REF target=$TARGET at $(date -u +%FT%TZ)"
