@@ -21,9 +21,13 @@ esac
 REPO=/opt/portfolio
 
 cd "$REPO"
-git fetch origin --prune
-git checkout "$REF"
-git pull --ff-only origin "$REF" || true
+if [[ "${SKIP_GIT_SYNC:-0}" == "1" ]]; then
+  echo "SKIP_GIT_SYNC=1; using existing files in $REPO"
+else
+  git fetch origin --prune
+  git checkout "$REF"
+  git pull --ff-only origin "$REF" || true
+fi
 
 cd "$REPO/infra/single-ec2/docker"
 sudo cp nginx/nginx.conf /etc/nginx/nginx.conf
