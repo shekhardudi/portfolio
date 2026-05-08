@@ -2,8 +2,13 @@ FROM python:3.12.9-slim
 
 WORKDIR /app
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     libpq-dev \
@@ -14,13 +19,13 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # 1. Install CPU-only PyTorch (~200 MB vs ~2 GB for CUDA version)
-RUN pip install --no-cache-dir \
+RUN python -m pip install \
     torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/cpu
 
 # 2. Install everything else; pip won't downgrade/upgrade torch since it's
 #    already satisfied.  Works because requirements.txt has no torch pin.
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install -r requirements.txt
 
 # Copy application code
 COPY . .
