@@ -570,8 +570,8 @@ export default function Demo() {
                   </div>
                   <div className="mt-4 space-y-2">
                     {CATEGORIZED_QUERIES.map(({ label, queries }) => (
-                      <div key={label} className="grid grid-cols-[10rem_1fr] items-start gap-x-3 gap-y-1">
-                        <span className="pt-1 text-xs font-medium text-foreground/50 text-right">
+                      <div key={label} className="grid grid-cols-1 items-start gap-x-3 gap-y-1 sm:grid-cols-[10rem_1fr]">
+                        <span className="pt-1 text-xs font-medium text-foreground/50 sm:text-right">
                           {label}
                         </span>
                         <div className="flex flex-wrap gap-2">

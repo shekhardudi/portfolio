@@ -22,13 +22,13 @@ export function SolutionTabs({ solution }: { solution: SolutionPlugin }) {
 
   return (
     <Tabs.Root defaultValue={tabs[0]} className="w-full">
-      <Tabs.List className="flex flex-wrap gap-2 border-b border-border">
+      <Tabs.List className="flex gap-2 overflow-x-auto border-b border-border pb-1">
         {tabs.map((t) => (
           <Tabs.Trigger
             key={t}
             value={t}
             className={cn(
-              '-mb-px rounded-t-md border-b-2 border-transparent px-4 py-2 text-sm font-medium text-foreground/70 transition',
+              '-mb-px whitespace-nowrap rounded-t-md border-b-2 border-transparent px-4 py-2 text-sm font-medium text-foreground/70 transition',
               'hover:text-foreground',
               'data-[state=active]:border-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',

@@ -30,6 +30,20 @@
   body {
     @apply bg-background text-foreground text-sm;
     font-feature-settings: 'cv11', 'ss01';
+    overflow-x: clip;
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  pre,
+  code {
+    word-break: break-word;
   }
 }
 

@@ -62,7 +62,7 @@ export default function AboutPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
             About
           </p>
-          <h1 className="mt-2 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
+          <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
             Shekhar Dudi
           </h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground sm:text-lg">

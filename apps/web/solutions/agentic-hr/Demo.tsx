@@ -388,7 +388,7 @@ export default function Demo() {
             )}
           >
             <div className="min-w-0 space-y-4">
-              <div className="flex h-[640px] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-muted/35 shadow-sm">
+              <div className="flex h-[60vh] min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-muted/35 shadow-sm sm:h-[640px]">
                 <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-5 py-6">
                   {messages.map((m, i) => (
                     <MessageBubble key={i} message={m} userName={employee.full_name} />
@@ -408,13 +408,13 @@ export default function Demo() {
                   }}
                   className="border-t border-border bg-background/60 p-4 backdrop-blur"
                 >
-                  <div className="flex items-end gap-3">
+                  <div className="flex flex-wrap items-end gap-3">
                     <UserAvatar name={employee.full_name} size="md" />
                     <input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder={`Ask as ${employee.full_name}…`}
-                      className="flex-1 rounded-xl border border-border bg-background px-4 py-3 text-[15px] outline-none focus:ring-1 focus:ring-ring"
+                      className="min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-3 text-[15px] outline-none focus:ring-1 focus:ring-ring"
                     />
                     <button
                       disabled={busy || !input.trim()}

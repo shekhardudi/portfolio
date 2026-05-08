@@ -46,15 +46,15 @@ export default function HomePage() {
           aria-hidden
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(96,165,250,0.12),transparent_70%)]"
         />
-        <div className="container-tight relative py-24 sm:py-32">
+        <div className="container-tight relative py-16 sm:py-24 lg:py-32">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
             AI engineering portfolio · Shekhar Dudi
           </p>
-          <h1 className="mt-4 text-4xl font-bold leading-tight sm:text-6xl">
+          <h1 className="mt-4 text-3xl font-bold leading-tight sm:text-5xl lg:text-6xl">
             Production-grade AI,
             <br className="hidden sm:block" /> not another demo reel.
           </h1>
-          <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
+          <p className="mt-6 max-w-2xl text-base text-muted-foreground sm:text-lg">
             Three live systems you can poke right now &mdash; hybrid search over millions
             of profiles, an HR copilot with human-in-the-loop approvals, and a multi-agent
             content generator. Real backends, real data, real failure modes. The same
@@ -93,7 +93,7 @@ export default function HomePage() {
           </div>
 
           {/* Stat strip */}
-          <dl className="mt-12 grid max-w-2xl grid-cols-2 gap-6 sm:grid-cols-4">
+          <dl className="mt-12 grid max-w-2xl grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
             <div>
               <dt className="text-xs uppercase tracking-wide text-muted-foreground">Live solutions</dt>
               <dd className="mt-1 text-2xl font-semibold">{SOLUTIONS.length}</dd>
@@ -182,7 +182,7 @@ export default function HomePage() {
 
       {/* CTA */}
       <section className="border-t border-border">
-        <div className="container-tight py-20 text-center">
+        <div className="container-tight py-16 text-center sm:py-20">
           <h2 className="text-3xl font-semibold sm:text-4xl">
             Working on something agentic?
           </h2>

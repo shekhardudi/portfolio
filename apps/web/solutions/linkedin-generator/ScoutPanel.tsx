@@ -649,13 +649,13 @@ export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props
         </div>
 
         {/* ─── Right column: live activity ─────────── */}
-        <div className="lg:min-w-[420px]">
+        <div className="min-w-0">
           {(busy || state.scout_callbacks.length > 0) && !done && (
             <ScoutFeed
               callbacks={state.scout_callbacks}
               active={busy}
               module={state.scout_progress_module}
-              className="h-[560px]"
+              className="h-[50vh] min-h-[320px] sm:h-[560px]"
             />
           )}
 
@@ -748,7 +748,7 @@ export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props
 
 function IdleHero() {
   return (
-    <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-4 rounded-xl border border-border bg-muted/15 px-6 py-10 text-center">
+    <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 rounded-xl border border-border bg-muted/15 px-6 py-8 text-center sm:min-h-[520px] sm:py-10">
       <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted/50 text-foreground/85">
         <Telescope className="h-5 w-5" />
       </span>
@@ -789,7 +789,7 @@ function DoneCallout({
       : null;
 
   return (
-    <div className="flex h-full min-h-[520px] flex-col gap-5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-6">
+    <div className="flex h-full min-h-[320px] flex-col gap-5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-5 sm:min-h-[520px] sm:p-6">
       <div className="flex items-start gap-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
           <CheckCircle2 className="h-5 w-5" />
@@ -806,7 +806,7 @@ function DoneCallout({
         </div>
       </div>
 
-      <ul className="grid grid-cols-2 gap-2">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Stat label="Signals" value={String(signalsCount)} icon={Bookmark} />
         <Stat label="Findings" value={String(findingsCount)} icon={FileText} />
         <Stat label="Modules" value={String(modules.length)} icon={Layers} />

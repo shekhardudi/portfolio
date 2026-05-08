@@ -271,7 +271,7 @@ export default function ProductionStudio({ state, dispatch, onCompleted, onReset
         <CostTracker cost={state.cost} kind="studio" />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(340px,0.95fr)_minmax(420px,1.05fr)]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
       {/* ── Left column: form ──────────────────────────────────────── */}
       <form
         onSubmit={(e) => {
@@ -453,13 +453,13 @@ export default function ProductionStudio({ state, dispatch, onCompleted, onReset
       </form>
 
       {/* ── Right column: live activity ────────────────────────────── */}
-      <div className="space-y-3 lg:min-w-[420px]">
+      <div className="min-w-0 space-y-3">
         {(busy || state.events.length > 0) && (
           <EventStream
             events={state.events}
             active={busy}
             stage={state.stage}
-            className="h-[560px]"
+            className="h-[50vh] min-h-[320px] sm:h-[560px]"
           />
         )}
 
@@ -615,7 +615,7 @@ function WorkflowRail({
 
 function IdleHero() {
   return (
-    <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/15 p-8 text-center">
+    <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/15 p-6 text-center sm:min-h-[520px] sm:p-8">
       <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background">
         <Sparkles className="h-5 w-5 text-foreground/80" />
       </span>

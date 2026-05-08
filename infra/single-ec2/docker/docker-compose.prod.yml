@@ -27,7 +27,7 @@ services:
   # intelli-search stack
   # ==========================================================================
   opensearch:
-    image: opensearchproject/opensearch:2.13.0
+    image: opensearchproject/opensearch:3.5.0
     container_name: portfolio-opensearch
     environment:
       - discovery.type=single-node
@@ -44,7 +44,7 @@ services:
     networks: [portfolio]
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.13.0
+    image: opensearchproject/opensearch-dashboards:3.5.0
     container_name: portfolio-dashboards
     environment:
       OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
