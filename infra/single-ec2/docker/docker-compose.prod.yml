@@ -98,8 +98,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-agentic_hr}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../../services/agentic-hr/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
-      - ../../../services/agentic-hr/agentic_hr_db.dump:/docker-entrypoint-initdb.d/agentic_hr_db.dump:ro
+      - /opt/portfolio/services/agentic-hr/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+      - /opt/portfolio/services/agentic-hr/agentic_hr_db.dump:/docker-entrypoint-initdb.d/agentic_hr_db.dump:ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -170,7 +170,7 @@ services:
 
   agentic-hr:
     build:
-      context: ../../services/agentic-hr/backend
+      context: /opt/portfolio/services/agentic-hr/backend
       dockerfile: Dockerfile
     container_name: portfolio-agentic-hr
     env_file: env/agentic-hr.env
@@ -189,7 +189,7 @@ services:
   # ==========================================================================
   linkedin-generator:
     build:
-      context: ../../services/linkedin-generator
+      context: /opt/portfolio/services/linkedin-generator
       dockerfile: Dockerfile
     container_name: portfolio-linkedin-generator
     env_file: env/linkedin-generator.env
@@ -203,7 +203,7 @@ services:
   # ==========================================================================
   web:
     build:
-      context: ../../../apps/web
+      context: /opt/portfolio/apps/web
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-https://shekharlabs.com}

@@ -20,6 +20,10 @@ esac
 
 REPO=/opt/portfolio
 
+# SSM/non-interactive runs may execute under users that don't yet trust this
+# repo path after ownership/bootstrap changes.
+git config --global --add safe.directory "$REPO" || true
+
 cd "$REPO"
 if [[ "${SKIP_GIT_SYNC:-0}" == "1" ]]; then
   echo "SKIP_GIT_SYNC=1; using existing files in $REPO"
