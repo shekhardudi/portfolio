@@ -75,11 +75,10 @@ jobs:
           TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          # Single-line shell command: pull the deploy script's branch first,
-          # then run it with the requested ref + target. We pull main to make
-          # sure we have the freshest copy of the deploy script before
-          # checking out a potentially older ref to deploy.
-          CMD="sudo -u ec2-user -H bash -lc 'git config --global --add safe.directory /opt/portfolio && cd /opt/portfolio && git fetch origin && git checkout main && git pull --ff-only origin main && bash scripts/single-ec2/deploy-on-ec2.sh \"${REF}\" \"${TARGET}\"'"
+          # Single-line shell command: fix repo ownership first (root cloned it
+          # during user-data bootstrap), then pull the deploy script's branch
+          # and run it with the requested ref + target.
+          CMD="sudo chown -R ec2-user:ec2-user /opt/portfolio && sudo -u ec2-user -H bash -lc 'git config --global --add safe.directory /opt/portfolio && cd /opt/portfolio && git fetch origin && git checkout main && git pull --ff-only origin main && bash scripts/single-ec2/deploy-on-ec2.sh \"${REF}\" \"${TARGET}\"'"
           jq -n --arg c "$CMD" '{commands:[$c]}' > /tmp/ssm-params.json
 
       - name: Send SSM deploy command
