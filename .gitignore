@@ -81,4 +81,3 @@ sync.sh
 
 # --- Claude ---
 .claude/
-*.sh
