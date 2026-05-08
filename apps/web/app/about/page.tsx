@@ -51,6 +51,7 @@ export default function AboutPage() {
               src="/profile.jpg"
               alt="Shekhar Dudi"
               fill
+              sizes="(max-width: 640px) 9rem, 11rem"
               className="object-cover"
               priority
             />

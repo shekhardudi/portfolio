@@ -2,10 +2,15 @@
 # EC2 user-data — runs once on first boot.
 # Sets up Docker + nginx, clones the portfolio repo, hydrates secrets from
 # SSM Parameter Store, then brings up the combined compose stack.
+#
+# nginx is HTTP-only on port 80. TLS terminates at CloudFront, which is the
+# only allowed origin source via the SG (CloudFront managed prefix list).
 set -euxo pipefail
 
 LOG=/var/log/portfolio-userdata.log
 exec > >(tee -a $LOG) 2>&1
+
+echo "==> portfolio user-data starting for ${site_fqdn}"
 
 # ---- packages -------------------------------------------------------------
 yum update -y
@@ -14,10 +19,7 @@ yum install -y \
   git \
   docker \
   jq \
-  awscli \
-  httpd-tools \
-  certbot \
-  python3-certbot-nginx
+  awscli
 
 systemctl enable --now docker
 usermod -aG docker ec2-user
@@ -68,24 +70,7 @@ ssm_to_envfile linkedin-generator
 
 # ---- nginx host config ----------------------------------------------------
 cp $REPO/infra/single-ec2/docker/nginx/nginx.conf /etc/nginx/nginx.conf
-
-# Dashboards basic-auth password from SSM
-DASH_PW=$(aws ssm get-parameter \
-  --name "${ssm_param_path}/dashboards/basic_auth" \
-  --with-decryption --region "${aws_region}" \
-  --query 'Parameter.Value' --output text 2>/dev/null || echo "admin:CHANGE_ME")
-echo "$DASH_PW" > /etc/nginx/.htpasswd
-chmod 600 /etc/nginx/.htpasswd
-
-# ---- TLS certs (Let's Encrypt fallback when CloudFront isn't terminating) -
-# CloudFront does the user-facing TLS; certbot here issues certs for the
-# nginx<->CloudFront leg so origin requests stay HTTPS.
-if [[ ! -d /etc/letsencrypt/live/${api_fqdn} ]]; then
-  certbot --nginx -n --agree-tos -m ${email} \
-    -d ${api_fqdn} -d ${dashboards_fqdn} || \
-    echo "certbot failed; nginx will fall back to self-signed (CloudFront still works)."
-fi
-
+nginx -t
 systemctl enable --now nginx
 systemctl reload nginx || systemctl restart nginx
 
@@ -96,4 +81,4 @@ docker compose -f docker-compose.prod.yml pull || true
 docker compose -f docker-compose.prod.yml up -d --build
 EOF
 
-echo "user-data complete at $(date -u +%FT%TZ)" >> $LOG
+echo "==> user-data complete at $(date -u +%FT%TZ)" >> $LOG

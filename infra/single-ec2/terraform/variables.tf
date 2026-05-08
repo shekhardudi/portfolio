@@ -13,7 +13,7 @@ variable "environment" {
 variable "aws_region" {
   description = "Primary AWS region for VPC + EC2."
   type        = string
-  default     = "ap-south-1"
+  default     = "ap-southeast-2"
 }
 
 # CloudFront + ACM (cert) MUST be in us-east-1, regardless of where EC2 lives.
@@ -29,16 +29,10 @@ variable "domain_name" {
   default     = "shekharlabs.com"
 }
 
-variable "subdomains" {
-  description = "Subdomains the platform serves."
-  type = object({
-    api        = string
-    dashboards = string
-  })
-  default = {
-    api        = "api"
-    dashboards = "dashboards"
-  }
+variable "existing_route53_zone_id" {
+  description = "Optional pre-existing authoritative Route53 hosted zone ID to use for DNS and ACM validation."
+  type        = string
+  default     = ""
 }
 
 variable "instance_type" {
@@ -64,20 +58,19 @@ variable "key_name" {
 }
 
 variable "github_repo_url" {
-  description = "GitHub HTTPS clone URL of this portfolio repo."
+  description = "GitHub HTTPS clone URL of this portfolio repo (cloned by EC2 user-data)."
   type        = string
 }
 
-variable "amplify_branch" {
-  description = "Branch Amplify auto-deploys."
+variable "github_owner" {
+  description = "GitHub org/user slug for the repo (used in the GHA OIDC trust policy)."
   type        = string
-  default     = "main"
 }
 
-variable "amplify_oauth_token" {
-  description = "GitHub PAT with `repo` scope for Amplify connector. Pass via TF_VAR_amplify_oauth_token."
+variable "github_repo" {
+  description = "GitHub repo name (used in the GHA OIDC trust policy)."
   type        = string
-  sensitive   = true
+  default     = "portfolio"
 }
 
 variable "common_tags" {

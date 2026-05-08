@@ -1,24 +1,22 @@
 # Copy to terraform.tfvars (gitignored) and fill in.
-# Example shown; replace with your actual values.
 
-project        = "portfolio"
-environment    = "prod"
-aws_region     = "ap-south-1"
-domain_name    = "shekharlabs.com"
+project     = "portfolio"
+environment = "prod"
+aws_region  = "ap-southeast-2"
+domain_name = "shekharlabs.com"
 
-instance_type  = "t3.xlarge"
-ebs_size_gb    = 150
+instance_type = "t3.xlarge"
+ebs_size_gb   = 150
 
 # Operator IP (your laptop) — RESTRICT TO /32
 ssh_ingress_cidr = "203.0.113.42/32"
 
-# Pre-created EC2 keypair name in the AWS console
+# Pre-created EC2 keypair name in the AWS console (region: aws_region)
 key_name = "portfolio-prod"
 
-# HTTPS clone URL of this repo (Amplify pulls from here)
+# HTTPS clone URL of this repo (cloned by EC2 user-data on first boot)
 github_repo_url = "https://github.com/shekhardudi/portfolio.git"
 
-amplify_branch = "main"
-
-# Pass via TF_VAR_amplify_oauth_token — never commit a PAT
-# amplify_oauth_token = "ghp_xxxxxxxxxxxxxxxxxxxx"
+# GitHub OIDC trust — the deploy role only allows tokens minted for this repo.
+github_owner = "shekhardudi"
+github_repo  = "portfolio"

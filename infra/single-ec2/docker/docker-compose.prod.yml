@@ -3,7 +3,7 @@
 # Conventions
 #   - Data services bind to 127.0.0.1 only; backends reach them by service name.
 #   - Each backend reads its own env file (no shared root .env).
-#   - Host ports: 8001 / 8002 / 8003 — proxied by host-level nginx.
+#   - Host ports: 3030 (web) / 8001 / 8002 / 8003 — proxied by host-level nginx.
 #   - All build contexts are RELATIVE TO THIS FILE (../../services/...).
 
 name: portfolio
@@ -99,6 +99,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ../../services/agentic-hr/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+      - ../../../services/agentic-hr/agentic_hr_db.dump:/docker-entrypoint-initdb.d/agentic_hr_db.dump:ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -194,5 +195,33 @@ services:
     env_file: env/linkedin-generator.env
     ports:
       - "127.0.0.1:8003:8000"
+    restart: unless-stopped
+    networks: [portfolio]
+
+  # ==========================================================================
+  # web — Next.js portfolio (basePath=/portal, served by nginx /portal/)
+  # ==========================================================================
+  web:
+    build:
+      context: ../../../apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-https://shekharlabs.com}
+        NEXT_PUBLIC_INTELLI_SEARCH_API: ${WEB_INTELLI_SEARCH_API:-https://shekharlabs.com/api/intelli-search}
+        NEXT_PUBLIC_AGENTIC_HR_API: ${WEB_AGENTIC_HR_API:-https://shekharlabs.com/api/agentic-hr}
+        NEXT_PUBLIC_LINKEDIN_API: ${WEB_LINKEDIN_API:-https://shekharlabs.com/api/linkedin-generator}
+        # Agentic HR integration chip targets — must be browser-reachable URLs.
+        # In prod we route through nginx subpaths (CloudFront -> EC2:80 -> nginx).
+        NEXT_PUBLIC_NOCO_URL: ${WEB_NOCO_URL:-https://shekharlabs.com/nocodb/}
+        NEXT_PUBLIC_GITEA_URL: ${WEB_GITEA_URL:-https://shekharlabs.com/gitea/}
+        NEXT_PUBLIC_MATTERMOST_URL: ${WEB_MATTERMOST_URL:-https://shekharlabs.com/mattermost/}
+
+    container_name: portfolio-web
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "127.0.0.1:3030:3000"
     restart: unless-stopped
     networks: [portfolio]

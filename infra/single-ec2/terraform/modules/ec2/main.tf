@@ -12,22 +12,9 @@ variable "tags" {
   default = {}
 }
 
-variable "ops_email" {
+variable "site_fqdn" {
   type        = string
-  default     = "shekhar.dudi@gmail.com"
-  description = "Email for Let's Encrypt registration."
-}
-
-variable "api_fqdn" {
-  type        = string
-  default     = "api.shekharlabs.com"
-  description = "FQDN for the API endpoint (used in nginx + certbot)."
-}
-
-variable "dashboards_fqdn" {
-  type        = string
-  default     = "dashboards.shekharlabs.com"
-  description = "FQDN for OpenSearch Dashboards."
+  description = "Public site FQDN (apex). Passed to user-data for tagging/logging only."
 }
 
 # Latest Amazon Linux 2 AMI (we use AL2 for amazon-linux-extras)
@@ -113,9 +100,7 @@ resource "aws_instance" "host" {
     github_repo_url = var.github_repo_url
     ssm_param_path  = var.ssm_param_path
     aws_region      = data.aws_region.current.name
-    api_fqdn        = var.api_fqdn
-    dashboards_fqdn = var.dashboards_fqdn
-    email           = var.ops_email
+    site_fqdn       = var.site_fqdn
   })
 
   root_block_device {
@@ -167,7 +152,7 @@ resource "aws_iam_role_policy_attachment" "dlm" {
 }
 
 resource "aws_dlm_lifecycle_policy" "daily" {
-  description        = "${var.name_prefix} — daily EBS snapshot, 7-day retention"
+  description        = "${var.name_prefix}-daily-ebs-snapshot-7d"
   execution_role_arn = aws_iam_role.dlm.arn
   state              = "ENABLED"
 

@@ -1,0 +1,119 @@
+name: deploy
+
+# Manual-dispatch only. Resolves the EC2 by tag, then runs an SSM shell
+# command that invokes scripts/single-ec2/deploy-on-ec2.sh on the host.
+# The actual deploy logic lives in that script (easier to test locally).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "git ref to deploy (branch / tag / sha)"
+        type: string
+        default: "main"
+      target:
+        description: "what to rebuild"
+        type: choice
+        default: "all"
+        options:
+          - all
+          - web
+          - services
+
+permissions:
+  id-token: write   # required for AWS OIDC
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  INSTANCE_TAG_VALUE: portfolio-prod-host
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve EC2 instance id by tag
+        id: ec2
+        run: |
+          set -euo pipefail
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values=$INSTANCE_TAG_VALUE" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+          if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
+            echo "No running instance found with tag Name=$INSTANCE_TAG_VALUE" >&2
+            exit 1
+          fi
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "Resolved instance: $INSTANCE_ID"
+
+      - name: Build SSM parameters JSON
+        env:
+          REF:    ${{ inputs.ref }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          # Single-line shell command: pull the deploy script's branch first,
+          # then run it with the requested ref + target. We pull main to make
+          # sure we have the freshest copy of the deploy script before
+          # checking out a potentially older ref to deploy.
+          CMD="sudo -u ec2-user -H bash -lc 'cd /home/ec2-user/portfolio && git fetch origin && git checkout main && git pull --ff-only origin main && bash scripts/single-ec2/deploy-on-ec2.sh \"${REF}\" \"${TARGET}\"'"
+          jq -n --arg c "$CMD" '{commands:[$c]}' > /tmp/ssm-params.json
+
+      - name: Send SSM deploy command
+        id: ssm
+        run: |
+          set -euo pipefail
+          CMD_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ steps.ec2.outputs.instance_id }}" \
+            --comment "gha deploy ref=${{ inputs.ref }} target=${{ inputs.target }}" \
+            --parameters file:///tmp/ssm-params.json \
+            --query "Command.CommandId" --output text)
+          echo "command_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+          echo "Sent SSM command $CMD_ID"
+
+      - name: Wait for SSM command and dump output
+        env:
+          CMD_ID:      ${{ steps.ssm.outputs.command_id }}
+          INSTANCE_ID: ${{ steps.ec2.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          aws ssm wait command-executed \
+            --region "$AWS_REGION" \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" || true
+
+          STATUS=$(aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "Status" --output text)
+          echo "Status: $STATUS"
+
+          echo "----- stdout -----"
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "StandardOutputContent" --output text || true
+
+          echo "----- stderr -----"
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "StandardErrorContent" --output text || true
+
+          if [[ "$STATUS" != "Success" ]]; then
+            exit 1
+          fi

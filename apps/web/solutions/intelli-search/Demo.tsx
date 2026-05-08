@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
@@ -501,6 +502,9 @@ export default function Demo() {
               <DrawerContent>
                 <DrawerHeader>
                   <DrawerTitle>Filters</DrawerTitle>
+                  <DrawerDescription>
+                    Refine search results by company attributes.
+                  </DrawerDescription>
                 </DrawerHeader>
                 <FilterPanel
                   filters={state.filters}

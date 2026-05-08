@@ -55,7 +55,7 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_security_group" "app" {
   name        = "${var.name_prefix}-app-sg"
-  description = "EC2 host SG: SSH from operator, 80/443 from CloudFront only"
+  description = "EC2 host SG: SSH from operator, port 80 from CloudFront only"
   vpc_id      = aws_vpc.this.id
   tags        = merge(var.tags, { Name = "${var.name_prefix}-app-sg" })
 
@@ -68,16 +68,7 @@ resource "aws_security_group" "app" {
     cidr_blocks = [var.ssh_ingress_cidr]
   }
 
-  # HTTPS from CloudFront edge only
-  ingress {
-    description     = "HTTPS from CloudFront prefix list"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
-  }
-
-  # HTTP -> HTTPS redirects (also CF-only)
+  # CloudFront terminates TLS; origin traffic to nginx is HTTP only.
   ingress {
     description     = "HTTP from CloudFront prefix list"
     from_port       = 80

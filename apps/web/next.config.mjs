@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  output: 'standalone',
+  basePath: '/portal',
   experimental: {
     mdxRs: true,
   },

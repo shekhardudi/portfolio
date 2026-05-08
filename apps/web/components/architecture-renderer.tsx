@@ -4,6 +4,8 @@ import type { SolutionPlugin } from '@/solutions/_types';
 import { ArchitectureImagePanel } from '@/components/architecture-image-panel';
 import { MermaidDiagram } from '@/components/mermaid-diagram';
 
+const APP_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '/portal';
+
 export function ArchitectureRenderer({ solution }: { solution: SolutionPlugin }) {
   const config = solution.meta.architecture;
   const Architecture = solution.Architecture;
@@ -16,17 +18,21 @@ export function ArchitectureRenderer({ solution }: { solution: SolutionPlugin })
   // If a Mermaid source path exists, we treat its sibling diagram.png as the
   // canonical static artifact. This lets each solution folder be self-contained
   // after file moves: /architectures/<slug>/diagram.mmd + diagram.png.
-  const resolvedImagePath = derivePngFallbackPath(mermaid?.sourcePath) ?? image;
+  const resolvedImagePath = withBasePath(
+    derivePngFallbackPath(mermaid?.sourcePath) ?? image,
+    APP_BASE_PATH,
+  );
+  const resolvedMermaidSourcePath = withBasePath(mermaid?.sourcePath, APP_BASE_PATH);
   const mermaidFallbackImage = resolvedImagePath;
   const renderMermaid = () => {
-    if (!mermaid?.source && !mermaid?.sourcePath) return null;
+    if (!mermaid?.source && !resolvedMermaidSourcePath) return null;
     return (
       <MermaidDiagram
-        source={mermaid.source}
-        sourcePath={mermaid.sourcePath}
+        source={mermaid?.source}
+        sourcePath={resolvedMermaidSourcePath}
         fallbackImagePath={mermaidFallbackImage}
         fallbackImageAlt={alt}
-        theme={mermaid.theme}
+        theme={mermaid?.theme}
       />
     );
   };
@@ -62,4 +68,11 @@ function derivePngFallbackPath(sourcePath?: string): string | undefined {
     return sourcePath.replace(/\.mermaid$/i, '.png');
   }
   return undefined;
+}
+
+function withBasePath(path: string | undefined, basePath: string): string | undefined {
+  if (!path) return undefined;
+  if (!basePath || !path.startsWith('/')) return path;
+  if (path === basePath || path.startsWith(`${basePath}/`)) return path;
+  return `${basePath}${path}`;
 }

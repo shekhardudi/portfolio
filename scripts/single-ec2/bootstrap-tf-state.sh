@@ -3,12 +3,12 @@
 # remote state and lock for this project. Idempotent. Safe to re-run.
 #
 # Required env (or pass via flags):
-#   AWS_REGION   default: us-east-1
+#   AWS_REGION   default: ap-southeast-2
 #   STATE_BUCKET default: shekharlabs-tfstate
 #   LOCK_TABLE   default: shekharlabs-tflock
 set -euo pipefail
 
-REGION="${AWS_REGION:-us-east-1}"
+REGION="${AWS_REGION:-ap-southeast-2}"
 BUCKET="${STATE_BUCKET:-shekharlabs-tfstate}"
 TABLE="${LOCK_TABLE:-shekharlabs-tflock}"
 

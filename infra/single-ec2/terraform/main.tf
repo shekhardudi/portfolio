@@ -1,8 +1,8 @@
 locals {
   name_prefix     = "${var.project}-${var.environment}"
-  api_fqdn        = "${var.subdomains.api}.${var.domain_name}"
-  dashboards_fqdn = "${var.subdomains.dashboards}.${var.domain_name}"
+  apex_fqdn       = var.domain_name
   www_fqdn        = "www.${var.domain_name}"
+  route53_zone_id = var.existing_route53_zone_id != "" ? var.existing_route53_zone_id : aws_route53_zone.primary.zone_id
 
   tags = merge(var.common_tags, {
     Environment = var.environment
@@ -21,11 +21,15 @@ provider "aws" {
 }
 
 # ---------------------------------------------------------------------------
-# Route53 zone — created first so ACM validation + amplify domain assoc work
+# Route53 zone — created first so ACM validation works without a cycle
 # ---------------------------------------------------------------------------
 resource "aws_route53_zone" "primary" {
   name = var.domain_name
   tags = local.tags
+}
+
+data "aws_route53_zone" "selected" {
+  zone_id = local.route53_zone_id
 }
 
 # ---------------------------------------------------------------------------
@@ -54,13 +58,12 @@ module "ec2" {
   eip_allocation_id = module.network.eip_allocation_id
   github_repo_url   = var.github_repo_url
   ssm_param_path    = "/${var.project}/${var.environment}"
-  api_fqdn          = local.api_fqdn
-  dashboards_fqdn   = local.dashboards_fqdn
+  site_fqdn         = local.apex_fqdn
   tags              = local.tags
 }
 
 # ---------------------------------------------------------------------------
-# CDN — CloudFront in front of EC2 for api.* and dashboards.*
+# CDN — single CloudFront distribution covering apex + www, fronts EC2 :80
 # Owns ACM cert (us-east-1, wildcard).
 # ---------------------------------------------------------------------------
 module "cdn" {
@@ -72,46 +75,36 @@ module "cdn" {
 
   name_prefix     = local.name_prefix
   domain_name     = var.domain_name
-  api_fqdn        = local.api_fqdn
-  dashboards_fqdn = local.dashboards_fqdn
+  apex_fqdn       = local.apex_fqdn
+  www_fqdn        = local.www_fqdn
   ec2_public_dns  = module.ec2.public_dns
-  ec2_eip         = module.ec2.public_ip
-  route53_zone_id = aws_route53_zone.primary.zone_id
+  route53_zone_id = local.route53_zone_id
   tags            = local.tags
 }
 
 # ---------------------------------------------------------------------------
-# DNS — api / dashboards records (apex/www handled by amplify module)
+# DNS — apex + www records pointing at CloudFront
 # ---------------------------------------------------------------------------
 module "dns" {
   source = "./modules/dns"
 
-  domain_name                = var.domain_name
-  zone_id                    = aws_route53_zone.primary.zone_id
-  api_fqdn                   = local.api_fqdn
-  dashboards_fqdn            = local.dashboards_fqdn
-  api_cf_alias_target        = module.cdn.api_alias_target
-  dashboards_cf_alias_target = module.cdn.dashboards_alias_target
-  tags                       = local.tags
+  domain_name     = var.domain_name
+  zone_id         = local.route53_zone_id
+  apex_fqdn       = local.apex_fqdn
+  www_fqdn        = local.www_fqdn
+  cf_alias_target = module.cdn.alias_target
+  tags            = local.tags
 }
 
 # ---------------------------------------------------------------------------
-# Amplify — Next.js apps/web from GitHub
+# CI/CD — IAM role assumed by GitHub Actions via OIDC for SSM-driven deploy
 # ---------------------------------------------------------------------------
-module "amplify" {
-  source = "./modules/amplify"
-  providers = {
-    aws           = aws
-    aws.us_east_1 = aws.us_east_1
-  }
+module "cicd" {
+  source = "./modules/cicd"
 
-  name_prefix     = local.name_prefix
-  domain_name     = var.domain_name
-  www_fqdn        = local.www_fqdn
-  github_repo_url = var.github_repo_url
-  branch_name     = var.amplify_branch
-  oauth_token     = var.amplify_oauth_token
-  api_base_url    = "https://${local.api_fqdn}"
-  route53_zone_id = aws_route53_zone.primary.zone_id
-  tags            = local.tags
+  name_prefix  = local.name_prefix
+  github_owner = var.github_owner
+  github_repo  = var.github_repo
+  instance_id  = module.ec2.instance_id
+  tags         = local.tags
 }

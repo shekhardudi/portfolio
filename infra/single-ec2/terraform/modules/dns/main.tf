@@ -1,38 +1,34 @@
-# Note: the Route53 zone is created at the root, not here, so the cdn (ACM)
-# and amplify (domain association) modules can read its id without a cycle.
-# This module only owns the api.* and dashboards.* alias records.
+# Apex + www alias records pointing at the single CloudFront distribution.
+# Route53 zone is created at the root so ACM validation can read its id.
 
 variable "domain_name" { type = string }
-variable "api_fqdn" { type = string }
-variable "dashboards_fqdn" { type = string }
+variable "apex_fqdn" { type = string }
+variable "www_fqdn" { type = string }
 variable "zone_id" { type = string }
-variable "api_cf_alias_target" { type = object({ name = string, zone_id = string }) }
-variable "dashboards_cf_alias_target" { type = object({ name = string, zone_id = string }) }
+variable "cf_alias_target" { type = object({ name = string, zone_id = string }) }
 variable "tags" {
   type    = map(string)
   default = {}
 }
 
-# api.* -> CloudFront in front of EC2
-resource "aws_route53_record" "api" {
+resource "aws_route53_record" "apex" {
   zone_id = var.zone_id
-  name    = var.api_fqdn
+  name    = var.apex_fqdn
   type    = "A"
   alias {
-    name                   = var.api_cf_alias_target.name
-    zone_id                = var.api_cf_alias_target.zone_id
+    name                   = var.cf_alias_target.name
+    zone_id                = var.cf_alias_target.zone_id
     evaluate_target_health = false
   }
 }
 
-# dashboards.* -> CloudFront in front of EC2 :5601
-resource "aws_route53_record" "dashboards" {
+resource "aws_route53_record" "www" {
   zone_id = var.zone_id
-  name    = var.dashboards_fqdn
+  name    = var.www_fqdn
   type    = "A"
   alias {
-    name                   = var.dashboards_cf_alias_target.name
-    zone_id                = var.dashboards_cf_alias_target.zone_id
+    name                   = var.cf_alias_target.name
+    zone_id                = var.cf_alias_target.zone_id
     evaluate_target_health = false
   }
 }

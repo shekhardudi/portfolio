@@ -8,14 +8,9 @@ output "ec2_public_dns" {
   value       = module.ec2.public_dns
 }
 
-output "amplify_default_domain" {
-  description = "Amplify-provided default domain (before custom domain DNS validates)."
-  value       = module.amplify.default_domain
-}
-
-output "api_url" {
-  description = "Public API base URL (CloudFront-fronted)."
-  value       = "https://${var.subdomains.api}.${var.domain_name}"
+output "ec2_instance_id" {
+  description = "EC2 instance id (use with `aws ssm start-session --target ...`)."
+  value       = module.ec2.instance_id
 }
 
 output "site_url" {
@@ -23,12 +18,17 @@ output "site_url" {
   value       = "https://${var.domain_name}"
 }
 
-output "dashboards_url" {
-  description = "Public OpenSearch Dashboards URL (basic-auth protected)."
-  value       = "https://${var.subdomains.dashboards}.${var.domain_name}"
+output "cloudfront_distribution_id" {
+  description = "Single CloudFront distribution fronting apex + www."
+  value       = module.cdn.distribution_id
 }
 
 output "route53_name_servers" {
   description = "Set these at your domain registrar if the apex isn't already delegated."
-  value       = aws_route53_zone.primary.name_servers
+  value       = data.aws_route53_zone.selected.name_servers
+}
+
+output "gha_deploy_role_arn" {
+  description = "IAM role ARN that GitHub Actions assumes via OIDC for SSM-driven deploy."
+  value       = module.cicd.deploy_role_arn
 }
