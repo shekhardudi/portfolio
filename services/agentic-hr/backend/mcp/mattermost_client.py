@@ -68,6 +68,29 @@ class MattermostMCPClient:
             raise ValueError(f"Mattermost {object_name} missing id; keys={keys}")
         return object_id
 
+    def _normalize_single_object(self, obj: dict | list | None, object_name: str, *, preferred_key: str | None = None, preferred_value: str | None = None) -> dict:
+        """Normalize API payloads that may return either a single object or a list.
+
+        Some Mattermost endpoints behind proxies can unexpectedly return a one-item
+        list instead of a dict. This helper collapses those payloads back to the
+        expected object shape.
+        """
+        if obj is None:
+            raise ValueError(f"Mattermost {object_name} is None")
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, list):
+            if preferred_key and preferred_value:
+                for item in obj:
+                    if isinstance(item, dict) and item.get(preferred_key) == preferred_value:
+                        return item
+            for item in obj:
+                if isinstance(item, dict):
+                    _log.warning("Mattermost %s returned list payload; using first object | payload_size=%s", object_name, len(obj))
+                    return item
+            raise ValueError(f"Mattermost {object_name} list payload contained no objects")
+        raise ValueError(f"Mattermost {object_name} has unexpected type: {type(obj).__name__}")
+
     # ------------------------------------------------------------------
     # User lookup / creation
     # ------------------------------------------------------------------
@@ -82,7 +105,7 @@ class MattermostMCPClient:
             Mattermost user object dict, or None if not found.
         """
         try:
-            return self._api("GET", f"/users/email/{email}")
+            return self._normalize_single_object(self._api("GET", f"/users/email/{email}"), "user", preferred_key="email", preferred_value=email)
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -98,7 +121,7 @@ class MattermostMCPClient:
             Mattermost user object dict, or None if not found.
         """
         try:
-            return self._api("GET", f"/users/username/{username}")
+            return self._normalize_single_object(self._api("GET", f"/users/username/{username}"), "user", preferred_key="username", preferred_value=username)
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -128,7 +151,7 @@ class MattermostMCPClient:
             Mattermost team object dict, or None if not found.
         """
         try:
-            return self._api("GET", f"/teams/name/{team_name}")
+            return self._normalize_single_object(self._api("GET", f"/teams/name/{team_name}"), "team", preferred_key="name", preferred_value=team_name)
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -205,7 +228,7 @@ class MattermostMCPClient:
             Mattermost channel object dict, or None if not found.
         """
         try:
-            return self._api("GET", f"/teams/{team_id}/channels/name/{channel_name}")
+            return self._normalize_single_object(self._api("GET", f"/teams/{team_id}/channels/name/{channel_name}"), "channel", preferred_key="name", preferred_value=channel_name)
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
