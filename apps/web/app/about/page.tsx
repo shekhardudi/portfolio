@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Github, Linkedin, Mail, MapPin } from 'lucide-react';
+import profileImage from '@/public/profile.jpg';
 
 const LINKEDIN_URL = 'https://www.linkedin.com/in/shekhar-dudi-17283717/';
 const GITHUB_URL = 'https://github.com/shekhardudi';
@@ -48,7 +49,7 @@ export default function AboutPage() {
         <div className="shrink-0">
           <div className="relative h-36 w-36 overflow-hidden rounded-2xl border border-border shadow-md sm:h-44 sm:w-44">
             <Image
-              src="/profile.jpg"
+              src={profileImage}
               alt="Shekhar Dudi"
               fill
               sizes="(max-width: 640px) 9rem, 11rem"
