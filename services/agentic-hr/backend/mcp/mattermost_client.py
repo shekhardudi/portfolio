@@ -45,6 +45,29 @@ class MattermostMCPClient:
             return resp.json()
         return {}
 
+    def _extract_id(self, obj: dict | list | None, object_name: str) -> str:
+        """Extract Mattermost object id with defensive validation.
+
+        Args:
+            obj: API response object expected to contain an "id" key.
+            object_name: Human-readable object type for logging/errors.
+
+        Returns:
+            The object id string.
+
+        Raises:
+            ValueError: If response is missing or malformed.
+        """
+        if obj is None:
+            raise ValueError(f"Mattermost {object_name} is None")
+        if not isinstance(obj, dict):
+            raise ValueError(f"Mattermost {object_name} has unexpected type: {type(obj).__name__}")
+        object_id = obj.get("id")
+        if not object_id:
+            keys = ",".join(sorted(obj.keys())) if obj else "(empty)"
+            raise ValueError(f"Mattermost {object_name} missing id; keys={keys}")
+        return object_id
+
     # ------------------------------------------------------------------
     # User lookup / creation
     # ------------------------------------------------------------------
@@ -245,13 +268,24 @@ class MattermostMCPClient:
                 if user is None:
                     raise  # genuinely can't create or find the user
 
-        user_id = user["id"]
+        user_id = self._extract_id(user, "user")
         team = self.get_team_by_name(team_name)
         if team is None:
             _log.info("Team not found — creating | team=%s", team_name)
             team = self.create_team(team_name)
 
-        team_id = team["id"]
+        try:
+            team_id = self._extract_id(team, "team")
+        except ValueError:
+            # Rare fallback: if team lookup/create returns unexpected payload,
+            # search by normalized team name from the teams list endpoint.
+            _log.warning("Mattermost team payload malformed; falling back to list search | team=%s | payload=%s", team_name, team)
+            teams = self._api("GET", "/teams?page=0&per_page=200")
+            if isinstance(teams, list):
+                match = next((t for t in teams if isinstance(t, dict) and t.get("name") == team_name), None)
+                team_id = self._extract_id(match, "team(list-search)")
+            else:
+                raise
         self.add_user_to_team(team_id, user_id)
 
         channel_results = []
@@ -260,7 +294,8 @@ class MattermostMCPClient:
             if ch is None:
                 _log.info("Channel not found — creating | team=%s | channel=%s", team_name, ch_name)
                 ch = self.create_channel(team_id, ch_name)
-            self.add_user_to_channel(ch["id"], user_id)
+            channel_id = self._extract_id(ch, f"channel:{ch_name}")
+            self.add_user_to_channel(channel_id, user_id)
             channel_results.append(ch_name)
             _log.debug("Mattermost: added user to channel #%s", ch_name)
 

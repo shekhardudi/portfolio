@@ -77,6 +77,39 @@ resource "aws_security_group" "app" {
     prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
   }
 
+  # Direct access ports for tools exposed on EC2 public IP
+  ingress {
+    description = "NocoDB UI"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Gitea HTTP"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Gitea SSH"
+    from_port   = 2222
+    to_port     = 2222
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Mattermost UI"
+    from_port   = 8065
+    to_port     = 8065
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0

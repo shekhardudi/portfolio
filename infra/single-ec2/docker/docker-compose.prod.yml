@@ -43,20 +43,6 @@ services:
       - "127.0.0.1:9200:9200"     # localhost-only; SSH tunnel for remote ingest
     networks: [portfolio]
 
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:3.5.0
-    container_name: portfolio-dashboards
-    environment:
-      OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
-      opensearch.ssl.verificationMode: none
-      opensearch.username: admin
-      opensearch.password: ${OPENSEARCH_PASSWORD:-MySecurePassword123!}
-    ports:
-      - "127.0.0.1:5601:5601"     # localhost-only; nginx fronts with basic auth
-    depends_on:
-      - opensearch
-    networks: [portfolio]
-
   redis:
     image: redis:7-alpine
     container_name: portfolio-redis
