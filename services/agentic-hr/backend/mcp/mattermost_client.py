@@ -160,10 +160,17 @@ class MattermostMCPClient:
         Returns:
             Team member object dict.
         """
-        return self._api("POST", f"/teams/{team_id}/members", json={
-            "team_id": team_id,
-            "user_id": user_id,
-        })
+        try:
+            return self._api("POST", f"/teams/{team_id}/members", json={
+                "team_id": team_id,
+                "user_id": user_id,
+            })
+        except requests.HTTPError as e:
+            # 400 means the user is already a team member — treat as success
+            if e.response is not None and e.response.status_code == 400:
+                _log.debug("add_user_to_team: user already in team | team_id=%s user_id=%s", team_id, user_id)
+                return {}
+            raise
 
     def is_user_in_team(self, team_id: str, user_id: str) -> bool:
         """Check whether a user is a member of a Mattermost team.
@@ -232,9 +239,16 @@ class MattermostMCPClient:
         Returns:
             Channel member object dict.
         """
-        return self._api("POST", f"/channels/{channel_id}/members", json={
-            "user_id": user_id,
-        })
+        try:
+            return self._api("POST", f"/channels/{channel_id}/members", json={
+                "user_id": user_id,
+            })
+        except requests.HTTPError as e:
+            # 400 means the user is already a channel member — treat as success
+            if e.response is not None and e.response.status_code == 400:
+                _log.debug("add_user_to_channel: user already in channel | channel_id=%s user_id=%s", channel_id, user_id)
+                return {}
+            raise
 
     # ------------------------------------------------------------------
     # Provisioning entry point
@@ -332,7 +346,9 @@ class MattermostMCPClient:
             if not team:
                 _log.warning("Mattermost verify: team not found | team=%s", team_name)
                 return False
-            result = self.is_user_in_team(team["id"], user["id"])
+            user_id = self._extract_id(user, "user")
+            team_id = self._extract_id(team, "team")
+            result = self.is_user_in_team(team_id, user_id)
             _log.info("Mattermost access verification | user=%s | verified=%s", user_email, result)
             return result
         except Exception as e:
