@@ -101,16 +101,32 @@ jobs:
           INSTANCE_ID: ${{ steps.ec2.outputs.instance_id }}
         run: |
           set -euo pipefail
-          aws ssm wait command-executed \
-            --region "$AWS_REGION" \
-            --command-id "$CMD_ID" \
-            --instance-id "$INSTANCE_ID" || true
+          # Docker no-cache builds can take a long time; poll until a terminal
+          # SSM state instead of relying on the short default waiter timeout.
+          STATUS="Pending"
+          for i in $(seq 1 180); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$CMD_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
 
-          STATUS=$(aws ssm get-command-invocation \
-            --region "$AWS_REGION" \
-            --command-id "$CMD_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query "Status" --output text)
+            echo "Poll $i/180: status=$STATUS"
+
+            case "$STATUS" in
+              Success|Failed|TimedOut|Cancelled|Cancelling)
+                break
+                ;;
+              InProgress|Pending|Delayed)
+                sleep 10
+                ;;
+              *)
+                # Unknown state: keep polling briefly, then fail below.
+                sleep 10
+                ;;
+            esac
+          done
+
           echo "Status: $STATUS"
 
           echo "----- stdout -----"

@@ -18,7 +18,7 @@ COPY requirements.txt .
 
 # CPU-only torch for sentence-transformers
 RUN python -m pip install \
-    torch torchvision torchaudio \
+    torch \
     --index-url https://download.pytorch.org/whl/cpu
 
 RUN python -m pip install -r requirements.txt
