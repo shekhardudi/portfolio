@@ -131,11 +131,11 @@ class MattermostMCPClient:
         """Create a new Mattermost user with a random password (force reset on login)."""
         password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
         _log.info("Creating Mattermost user | email=%s | username=%s", email, username)
-        return self._api("POST", "/users", json={
+        return self._normalize_single_object(self._api("POST", "/users", json={
             "email": email,
             "username": username,
             "password": password,
-        })
+        }), "user", preferred_key="email", preferred_value=email)
 
     # ------------------------------------------------------------------
     # Team operations
@@ -167,11 +167,11 @@ class MattermostMCPClient:
             Created Mattermost team object dict.
         """
         _log.info("Creating Mattermost team | team=%s", team_name)
-        return self._api("POST", "/teams", json={
+        return self._normalize_single_object(self._api("POST", "/teams", json={
             "name": team_name,
             "display_name": team_name.replace("-", " ").replace("_", " ").title(),
             "type": "O",
-        })
+        }), "team", preferred_key="name", preferred_value=team_name)
 
     def add_user_to_team(self, team_id: str, user_id: str) -> dict:
         """Add a user to a Mattermost team.
@@ -245,12 +245,12 @@ class MattermostMCPClient:
             Created Mattermost channel object dict.
         """
         _log.info("Creating Mattermost channel | team_id=%s | channel=%s", team_id, channel_name)
-        return self._api("POST", "/channels", json={
+        return self._normalize_single_object(self._api("POST", "/channels", json={
             "team_id": team_id,
             "name": channel_name,
             "display_name": channel_name.replace("-", " ").replace("_", " ").title(),
             "type": "O",
-        })
+        }), "channel", preferred_key="name", preferred_value=channel_name)
 
     def add_user_to_channel(self, channel_id: str, user_id: str) -> dict:
         """Add a user to a Mattermost channel.
