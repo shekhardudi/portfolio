@@ -1,11 +1,13 @@
 /**
- * Integration tile metadata — links target the live UIs for each local service.
- * You can override each target via env vars if needed.
+ * Integration tile metadata — links target the live UIs for each service.
+ * Build-time env vars (NEXT_PUBLIC_*) supply the absolute URL in production.
+ * Defaults fall back to same-origin subpaths so production deployments without
+ * the env vars still route through the host nginx (never localhost).
  */
 
-const NOCO_URL = process.env.NEXT_PUBLIC_NOCO_URL ?? 'http://localhost:8080';
-const GITEA_URL = process.env.NEXT_PUBLIC_GITEA_URL ?? 'http://localhost:3001';
-const MATTERMOST_URL = process.env.NEXT_PUBLIC_MATTERMOST_URL ?? 'http://localhost:8065';
+const NOCO_URL = process.env.NEXT_PUBLIC_NOCO_URL || '/nocodb/';
+const GITEA_URL = process.env.NEXT_PUBLIC_GITEA_URL || '/gitea/';
+const MATTERMOST_URL = process.env.NEXT_PUBLIC_MATTERMOST_URL || '/mattermost/';
 
 export interface Integration {
   name: string;
