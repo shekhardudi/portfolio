@@ -91,6 +91,41 @@ class MattermostMCPClient:
             raise ValueError(f"Mattermost {object_name} list payload contained no objects")
         raise ValueError(f"Mattermost {object_name} has unexpected type: {type(obj).__name__}")
 
+    def _resolve_user_after_create(self, email: str, username: str) -> dict:
+        """Resolve the newly created user by canonical lookup instead of trusting POST payloads."""
+        for _ in range(3):
+            user = self.get_user_by_email(email)
+            if user is not None:
+                return user
+            user = self.get_user_by_username(username)
+            if user is not None:
+                return user
+        raise ValueError(f"Mattermost user create did not resolve a user for email={email}")
+
+    def _resolve_team_after_create(self, team_name: str, team_fallback: dict | None = None) -> dict:
+        """Resolve the newly created team by canonical lookup instead of trusting POST payloads."""
+        team = self.get_team_by_name(team_name)
+        if team is not None:
+            return team
+        if team_fallback is not None:
+            try:
+                return self._normalize_single_object(team_fallback, "team", preferred_key="name", preferred_value=team_name)
+            except ValueError:
+                pass
+        raise ValueError(f"Mattermost team create did not resolve a team for name={team_name}")
+
+    def _resolve_channel_after_create(self, team_id: str, channel_name: str, channel_fallback: dict | list | None = None) -> dict:
+        """Resolve the newly created channel by canonical lookup instead of trusting POST payloads."""
+        channel = self.get_channel_by_name(team_id, channel_name)
+        if channel is not None:
+            return channel
+        if channel_fallback is not None:
+            try:
+                return self._normalize_single_object(channel_fallback, "channel", preferred_key="name", preferred_value=channel_name)
+            except ValueError:
+                pass
+        raise ValueError(f"Mattermost channel create did not resolve a channel for name={channel_name}")
+
     # ------------------------------------------------------------------
     # User lookup / creation
     # ------------------------------------------------------------------
@@ -131,11 +166,12 @@ class MattermostMCPClient:
         """Create a new Mattermost user with a random password (force reset on login)."""
         password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
         _log.info("Creating Mattermost user | email=%s | username=%s", email, username)
-        return self._normalize_single_object(self._api("POST", "/users", json={
+        created = self._api("POST", "/users", json={
             "email": email,
             "username": username,
             "password": password,
-        }), "user", preferred_key="email", preferred_value=email)
+        })
+        return self._resolve_user_after_create(email, username) if not isinstance(created, dict) else self._normalize_single_object(created, "user", preferred_key="email", preferred_value=email)
 
     # ------------------------------------------------------------------
     # Team operations
@@ -167,11 +203,12 @@ class MattermostMCPClient:
             Created Mattermost team object dict.
         """
         _log.info("Creating Mattermost team | team=%s", team_name)
-        return self._normalize_single_object(self._api("POST", "/teams", json={
+        created = self._api("POST", "/teams", json={
             "name": team_name,
             "display_name": team_name.replace("-", " ").replace("_", " ").title(),
             "type": "O",
-        }), "team", preferred_key="name", preferred_value=team_name)
+        })
+        return self._resolve_team_after_create(team_name, created if isinstance(created, dict) else None)
 
     def add_user_to_team(self, team_id: str, user_id: str) -> dict:
         """Add a user to a Mattermost team.
@@ -245,12 +282,13 @@ class MattermostMCPClient:
             Created Mattermost channel object dict.
         """
         _log.info("Creating Mattermost channel | team_id=%s | channel=%s", team_id, channel_name)
-        return self._normalize_single_object(self._api("POST", "/channels", json={
+        created = self._api("POST", "/channels", json={
             "team_id": team_id,
             "name": channel_name,
             "display_name": channel_name.replace("-", " ").replace("_", " ").title(),
             "type": "O",
-        }), "channel", preferred_key="name", preferred_value=channel_name)
+        })
+        return self._resolve_channel_after_create(team_id, channel_name, created)
 
     def add_user_to_channel(self, channel_id: str, user_id: str) -> dict:
         """Add a user to a Mattermost channel.
