@@ -45,87 +45,6 @@ class MattermostMCPClient:
             return resp.json()
         return {}
 
-    def _extract_id(self, obj: dict | list | None, object_name: str) -> str:
-        """Extract Mattermost object id with defensive validation.
-
-        Args:
-            obj: API response object expected to contain an "id" key.
-            object_name: Human-readable object type for logging/errors.
-
-        Returns:
-            The object id string.
-
-        Raises:
-            ValueError: If response is missing or malformed.
-        """
-        if obj is None:
-            raise ValueError(f"Mattermost {object_name} is None")
-        if not isinstance(obj, dict):
-            raise ValueError(f"Mattermost {object_name} has unexpected type: {type(obj).__name__}")
-        object_id = obj.get("id")
-        if not object_id:
-            keys = ",".join(sorted(obj.keys())) if obj else "(empty)"
-            raise ValueError(f"Mattermost {object_name} missing id; keys={keys}")
-        return object_id
-
-    def _normalize_single_object(self, obj: dict | list | None, object_name: str, *, preferred_key: str | None = None, preferred_value: str | None = None) -> dict:
-        """Normalize API payloads that may return either a single object or a list.
-
-        Some Mattermost endpoints behind proxies can unexpectedly return a one-item
-        list instead of a dict. This helper collapses those payloads back to the
-        expected object shape.
-        """
-        if obj is None:
-            raise ValueError(f"Mattermost {object_name} is None")
-        if isinstance(obj, dict):
-            return obj
-        if isinstance(obj, list):
-            if preferred_key and preferred_value:
-                for item in obj:
-                    if isinstance(item, dict) and item.get(preferred_key) == preferred_value:
-                        return item
-            for item in obj:
-                if isinstance(item, dict):
-                    _log.warning("Mattermost %s returned list payload; using first object | payload_size=%s", object_name, len(obj))
-                    return item
-            raise ValueError(f"Mattermost {object_name} list payload contained no objects")
-        raise ValueError(f"Mattermost {object_name} has unexpected type: {type(obj).__name__}")
-
-    def _resolve_user_after_create(self, email: str, username: str) -> dict:
-        """Resolve the newly created user by canonical lookup instead of trusting POST payloads."""
-        for _ in range(3):
-            user = self.get_user_by_email(email)
-            if user is not None:
-                return user
-            user = self.get_user_by_username(username)
-            if user is not None:
-                return user
-        raise ValueError(f"Mattermost user create did not resolve a user for email={email}")
-
-    def _resolve_team_after_create(self, team_name: str, team_fallback: dict | None = None) -> dict:
-        """Resolve the newly created team by canonical lookup instead of trusting POST payloads."""
-        team = self.get_team_by_name(team_name)
-        if team is not None:
-            return team
-        if team_fallback is not None:
-            try:
-                return self._normalize_single_object(team_fallback, "team", preferred_key="name", preferred_value=team_name)
-            except ValueError:
-                pass
-        raise ValueError(f"Mattermost team create did not resolve a team for name={team_name}")
-
-    def _resolve_channel_after_create(self, team_id: str, channel_name: str, channel_fallback: dict | list | None = None) -> dict:
-        """Resolve the newly created channel by canonical lookup instead of trusting POST payloads."""
-        channel = self.get_channel_by_name(team_id, channel_name)
-        if channel is not None:
-            return channel
-        if channel_fallback is not None:
-            try:
-                return self._normalize_single_object(channel_fallback, "channel", preferred_key="name", preferred_value=channel_name)
-            except ValueError:
-                pass
-        raise ValueError(f"Mattermost channel create did not resolve a channel for name={channel_name}")
-
     # ------------------------------------------------------------------
     # User lookup / creation
     # ------------------------------------------------------------------
@@ -140,7 +59,7 @@ class MattermostMCPClient:
             Mattermost user object dict, or None if not found.
         """
         try:
-            return self._normalize_single_object(self._api("GET", f"/users/email/{email}"), "user", preferred_key="email", preferred_value=email)
+            return self._api("GET", f"/users/email/{email}")
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -156,7 +75,7 @@ class MattermostMCPClient:
             Mattermost user object dict, or None if not found.
         """
         try:
-            return self._normalize_single_object(self._api("GET", f"/users/username/{username}"), "user", preferred_key="username", preferred_value=username)
+            return self._api("GET", f"/users/username/{username}")
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -166,12 +85,11 @@ class MattermostMCPClient:
         """Create a new Mattermost user with a random password (force reset on login)."""
         password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
         _log.info("Creating Mattermost user | email=%s | username=%s", email, username)
-        created = self._api("POST", "/users", json={
+        return self._api("POST", "/users", json={
             "email": email,
             "username": username,
             "password": password,
         })
-        return self._resolve_user_after_create(email, username) if not isinstance(created, dict) else self._normalize_single_object(created, "user", preferred_key="email", preferred_value=email)
 
     # ------------------------------------------------------------------
     # Team operations
@@ -187,7 +105,7 @@ class MattermostMCPClient:
             Mattermost team object dict, or None if not found.
         """
         try:
-            return self._normalize_single_object(self._api("GET", f"/teams/name/{team_name}"), "team", preferred_key="name", preferred_value=team_name)
+            return self._api("GET", f"/teams/name/{team_name}")
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -203,12 +121,11 @@ class MattermostMCPClient:
             Created Mattermost team object dict.
         """
         _log.info("Creating Mattermost team | team=%s", team_name)
-        created = self._api("POST", "/teams", json={
+        return self._api("POST", "/teams", json={
             "name": team_name,
             "display_name": team_name.replace("-", " ").replace("_", " ").title(),
             "type": "O",
         })
-        return self._resolve_team_after_create(team_name, created if isinstance(created, dict) else None)
 
     def add_user_to_team(self, team_id: str, user_id: str) -> dict:
         """Add a user to a Mattermost team.
@@ -220,17 +137,10 @@ class MattermostMCPClient:
         Returns:
             Team member object dict.
         """
-        try:
-            return self._api("POST", f"/teams/{team_id}/members", json={
-                "team_id": team_id,
-                "user_id": user_id,
-            })
-        except requests.HTTPError as e:
-            # 400 means the user is already a team member — treat as success
-            if e.response is not None and e.response.status_code == 400:
-                _log.debug("add_user_to_team: user already in team | team_id=%s user_id=%s", team_id, user_id)
-                return {}
-            raise
+        return self._api("POST", f"/teams/{team_id}/members", json={
+            "team_id": team_id,
+            "user_id": user_id,
+        })
 
     def is_user_in_team(self, team_id: str, user_id: str) -> bool:
         """Check whether a user is a member of a Mattermost team.
@@ -265,7 +175,7 @@ class MattermostMCPClient:
             Mattermost channel object dict, or None if not found.
         """
         try:
-            return self._normalize_single_object(self._api("GET", f"/teams/{team_id}/channels/name/{channel_name}"), "channel", preferred_key="name", preferred_value=channel_name)
+            return self._api("GET", f"/teams/{team_id}/channels/name/{channel_name}")
         except requests.HTTPError as e:
             if e.response.status_code == 404:
                 return None
@@ -282,13 +192,12 @@ class MattermostMCPClient:
             Created Mattermost channel object dict.
         """
         _log.info("Creating Mattermost channel | team_id=%s | channel=%s", team_id, channel_name)
-        created = self._api("POST", "/channels", json={
+        return self._api("POST", "/channels", json={
             "team_id": team_id,
             "name": channel_name,
             "display_name": channel_name.replace("-", " ").replace("_", " ").title(),
             "type": "O",
         })
-        return self._resolve_channel_after_create(team_id, channel_name, created)
 
     def add_user_to_channel(self, channel_id: str, user_id: str) -> dict:
         """Add a user to a Mattermost channel.
@@ -300,16 +209,9 @@ class MattermostMCPClient:
         Returns:
             Channel member object dict.
         """
-        try:
-            return self._api("POST", f"/channels/{channel_id}/members", json={
-                "user_id": user_id,
-            })
-        except requests.HTTPError as e:
-            # 400 means the user is already a channel member — treat as success
-            if e.response is not None and e.response.status_code == 400:
-                _log.debug("add_user_to_channel: user already in channel | channel_id=%s user_id=%s", channel_id, user_id)
-                return {}
-            raise
+        return self._api("POST", f"/channels/{channel_id}/members", json={
+            "user_id": user_id,
+        })
 
     # ------------------------------------------------------------------
     # Provisioning entry point
@@ -343,24 +245,13 @@ class MattermostMCPClient:
                 if user is None:
                     raise  # genuinely can't create or find the user
 
-        user_id = self._extract_id(user, "user")
+        user_id = user["id"]
         team = self.get_team_by_name(team_name)
         if team is None:
             _log.info("Team not found — creating | team=%s", team_name)
             team = self.create_team(team_name)
 
-        try:
-            team_id = self._extract_id(team, "team")
-        except ValueError:
-            # Rare fallback: if team lookup/create returns unexpected payload,
-            # search by normalized team name from the teams list endpoint.
-            _log.warning("Mattermost team payload malformed; falling back to list search | team=%s | payload=%s", team_name, team)
-            teams = self._api("GET", "/teams?page=0&per_page=200")
-            if isinstance(teams, list):
-                match = next((t for t in teams if isinstance(t, dict) and t.get("name") == team_name), None)
-                team_id = self._extract_id(match, "team(list-search)")
-            else:
-                raise
+        team_id = team["id"]
         self.add_user_to_team(team_id, user_id)
 
         channel_results = []
@@ -369,8 +260,7 @@ class MattermostMCPClient:
             if ch is None:
                 _log.info("Channel not found — creating | team=%s | channel=%s", team_name, ch_name)
                 ch = self.create_channel(team_id, ch_name)
-            channel_id = self._extract_id(ch, f"channel:{ch_name}")
-            self.add_user_to_channel(channel_id, user_id)
+            self.add_user_to_channel(ch["id"], user_id)
             channel_results.append(ch_name)
             _log.debug("Mattermost: added user to channel #%s", ch_name)
 
@@ -407,9 +297,7 @@ class MattermostMCPClient:
             if not team:
                 _log.warning("Mattermost verify: team not found | team=%s", team_name)
                 return False
-            user_id = self._extract_id(user, "user")
-            team_id = self._extract_id(team, "team")
-            result = self.is_user_in_team(team_id, user_id)
+            result = self.is_user_in_team(team["id"], user["id"])
             _log.info("Mattermost access verification | user=%s | verified=%s", user_email, result)
             return result
         except Exception as e:
