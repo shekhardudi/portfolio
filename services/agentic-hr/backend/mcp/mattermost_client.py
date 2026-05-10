@@ -36,7 +36,23 @@ class MattermostMCPClient:
         """
         url = f"{self.base_url}/api/v4{path}"
         _log.debug("Mattermost %s %s", method.upper(), path)
+        # Never follow redirects: Mattermost behind a subpath (e.g. /mattermost)
+        # issues 302s to the canonical SiteURL, and requests downgrades POST→GET
+        # on follow, which corrupts create_user/create_team/create_channel into
+        # listing endpoints (returning JSON arrays instead of single objects).
+        kwargs.setdefault("allow_redirects", False)
         resp = self.session.request(method, url, **kwargs)
+        if resp.is_redirect or resp.is_permanent_redirect:
+            target = resp.headers.get("Location", "(no Location header)")
+            _log.error(
+                "Mattermost %s %s → %s redirect to %s — base_url likely missing subpath",
+                method.upper(), path, resp.status_code, target,
+            )
+            raise requests.HTTPError(
+                f"Unexpected redirect from Mattermost ({resp.status_code} → {target}); "
+                f"check MATTERMOST_URL includes the correct subpath",
+                response=resp,
+            )
         if not resp.ok:
             body = resp.text[:500] if resp.text else "(empty)"
             _log.error("Mattermost %s %s → %s | %s", method.upper(), path, resp.status_code, body)
