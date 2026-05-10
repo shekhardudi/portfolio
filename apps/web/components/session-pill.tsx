@@ -65,11 +65,16 @@ export function SessionPill() {
                 ? `Session menu — ${count} ${count === 1 ? 'job' : 'jobs'} running`
                 : 'Session menu'
             }
+            // touch-manipulation removes the 300ms tap delay on iOS so the
+            // popover opens crisply on first tap instead of feeling unresponsive.
+            // Idle padding bumped to p-3 so the trigger meets the 44pt mobile
+            // tap-target minimum even when only the icon is shown.
+            style={{ touchAction: 'manipulation' }}
             className={cn(
               'pointer-events-auto inline-flex items-center gap-1.5 rounded-full border shadow-md backdrop-blur transition',
               active
-                ? 'border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/25'
-                : 'border-foreground/25 bg-background/95 p-2 text-foreground/80 ring-1 ring-foreground/10 hover:border-foreground/50 hover:bg-muted hover:text-foreground',
+                ? 'border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/25'
+                : 'border-foreground/25 bg-background/95 p-3 text-foreground/80 ring-1 ring-foreground/10 hover:border-foreground/50 hover:bg-muted hover:text-foreground',
             )}
           >
             {active ? (
@@ -87,20 +92,35 @@ export function SessionPill() {
                 </span>
               </>
             ) : (
-              <Activity className="h-3.5 w-3.5" aria-hidden />
+              <Activity className="h-4 w-4" aria-hidden />
             )}
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" side="top" className="w-64 p-2">
+        <PopoverContent
+          align="end"
+          side="top"
+          // collisionPadding keeps the popover off the viewport edges on
+          // narrow phones; sideOffset gives a touch of breathing room above
+          // the trigger so it doesn't feel cramped against the thumb.
+          collisionPadding={12}
+          sideOffset={8}
+          className="w-64 max-w-[calc(100vw-1.5rem)] p-2"
+        >
           <div className="px-1 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-wider text-foreground/55">
             Session
           </div>
           <button
             type="button"
             onClick={onResetEverything}
-            className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm text-foreground hover:bg-red-500/10"
+            // Bigger tap target (py-3, h-4 icon) and explicit
+            // touch-manipulation so a single tap on iOS opens the confirm
+            // immediately instead of being eaten by the synthetic-hover
+            // double-tap chain that older mobile Safari applies to
+            // hover-styled buttons.
+            style={{ touchAction: 'manipulation' }}
+            className="flex w-full items-start gap-2.5 rounded-md px-2 py-3 text-left text-sm text-foreground transition active:bg-red-500/15 hover:bg-red-500/10"
           >
-            <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+            <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
             <span className="min-w-0">
               <span className="block font-medium">Reset all demos</span>
               <span className="mt-0.5 block text-[11px] leading-snug text-foreground/65">

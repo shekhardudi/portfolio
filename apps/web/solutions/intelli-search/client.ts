@@ -104,6 +104,27 @@ function cleanText(value?: string): string | undefined {
   return cleaned || undefined;
 }
 
+/**
+ * Normalise a hostname-or-URL into an absolute https:// URL.
+ *
+ * Some upstream rows store LinkedIn / company URLs as bare hostnames
+ * (`linkedin.com/company/canva`) or `www.linkedin.com/in/foo`. Without an
+ * explicit scheme the browser treats them as RELATIVE paths — fine on
+ * desktop where the user will notice the wrong target, but on mobile the
+ * tap silently navigates inside the SPA basepath and looks like the link
+ * is broken (especially LinkedIn deep-links, since iOS won't hand off to
+ * the LinkedIn app without an absolute URL).
+ */
+function normalizeUrl(value?: string): string | undefined {
+  const cleaned = cleanText(value);
+  if (!cleaned) return undefined;
+  // Already absolute (http/https/mailto/tel/…) — pass through untouched.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(cleaned)) return cleaned;
+  // Protocol-relative (`//linkedin.com/...`) → upgrade to https.
+  if (cleaned.startsWith('//')) return `https:${cleaned}`;
+  return `https://${cleaned.replace(/^\/+/, '')}`;
+}
+
 function toDisplayCase(value?: string): string | undefined {
   const cleaned = cleanText(value);
   if (!cleaned) return undefined;
@@ -159,7 +180,10 @@ interface BackendSearchResponse {
 
 function normalizeHit(r: BackendResult, i: number): SearchHit {
   // Backend may also tuck linkedin_url under linkedin_profile; surface either.
-  const linkedinUrl = cleanText(r.linkedin_url ?? r.linkedin_profile?.linkedin_url);
+  // normalizeUrl(...) ensures the value is always an absolute https:// URL —
+  // mobile browsers treat schemeless strings as in-app relative paths and
+  // the link looks dead.
+  const linkedinUrl = normalizeUrl(r.linkedin_url ?? r.linkedin_profile?.linkedin_url);
   const displayName = toDisplayCase(r.title ?? r.name) ?? cleanText(r.domain);
   const companyName = toDisplayCase(r.company ?? r.name);
   const normalizedYear =
@@ -179,7 +203,7 @@ function normalizeHit(r: BackendResult, i: number): SearchHit {
     size_range: r.size_range != null ? String(r.size_range) : undefined,
     summary: cleanText(r.summary ?? r.matching_reason),
     matching_reason: cleanText(r.matching_reason),
-    url: cleanText(r.url) ?? (r.domain ? `https://${r.domain}` : undefined),
+    url: normalizeUrl(r.url) ?? (r.domain ? `https://${r.domain}` : undefined),
     linkedin_url: linkedinUrl,
     current_employee_estimate: r.current_employee_estimate,
     search_method: cleanText(r.search_method),

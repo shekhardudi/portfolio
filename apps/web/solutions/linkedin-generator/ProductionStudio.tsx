@@ -49,6 +49,10 @@ export default function ProductionStudio({ state, dispatch, onCompleted, onReset
   const busy = state.job_status === 'queued' || state.job_status === 'running';
   const [unavailable, setUnavailable] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
+  // Local "submitting" flag — flipped synchronously on click so the button
+  // shows immediate feedback during the startPost() round-trip (otherwise
+  // there's a ~1s window where the click looks ignored).
+  const [submitting, setSubmitting] = useState(false);
   const cancelledRef = useRef(false);
   /** Guards against a remount-resume race spawning two concurrent loops. */
   const pollingRef = useRef(false);
@@ -106,7 +110,8 @@ export default function ProductionStudio({ state, dispatch, onCompleted, onReset
   }
 
   async function run() {
-    if (busy) return;
+    if (busy || submitting) return;
+    setSubmitting(true);
     setUnavailable(false);
     cancelledRef.current = false;
     const versionAtStart = studioVersion;
@@ -142,6 +147,8 @@ export default function ProductionStudio({ state, dispatch, onCompleted, onReset
           type: 'JOB_FAIL',
           error: e instanceof ApiError ? `${e.status} — ${e.body}` : (e as Error).message,
         });
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -366,12 +373,13 @@ export default function ProductionStudio({ state, dispatch, onCompleted, onReset
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <button
             type="submit"
-            disabled={busy || !ready}
-            className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+            disabled={busy || submitting || !ready}
+            className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition active:scale-[0.98] disabled:opacity-50"
           >
-            {busy ? (
+            {busy || submitting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Generating…
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {submitting && !busy ? 'Starting…' : 'Generating…'}
               </>
             ) : showCompletion ? (
               <>

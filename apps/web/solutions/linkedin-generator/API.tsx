@@ -301,13 +301,13 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 max-w-full space-y-1.5">
       {label && (
         <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/65">
           {label}
         </p>
       )}
-      <pre className="overflow-x-auto rounded-xl border border-cyan-500/30 bg-[#0b1220] p-4 text-[13px] leading-relaxed text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <pre className="max-w-full overflow-x-auto rounded-xl border border-cyan-500/30 bg-[#0b1220] p-4 text-[13px] leading-relaxed text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
         <code dangerouslySetInnerHTML={{ __html: renderColoredCode(code) }} />
       </pre>
     </div>

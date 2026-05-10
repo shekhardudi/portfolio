@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
 
 const BASE = process.env.NEXT_PUBLIC_AGENTIC_HR_API ?? '/agentic-hr';
 
@@ -6,6 +6,10 @@ export interface ChatRequest {
   session_id: string;
   message: string;
   employee_email?: string;
+  /** Client-supplied UUID for this chat round-trip. The backend caches the
+   *  terminal response under this id for ~10 min so a client that navigates
+   *  away mid-call can reattach via getChatResult(request_id). */
+  request_id?: string;
 }
 
 export interface Citation {
@@ -84,6 +88,7 @@ export function chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatRespon
       session_id: req.session_id,
       message: req.message,
       employee_email: req.employee_email ?? 'demo@example.com',
+      request_id: req.request_id,
     }),
     signal,
     timeoutMs: 90_000,
@@ -96,6 +101,60 @@ export function chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatRespon
     pending_approvals: [],
     tool_calls: [],
   }));
+}
+
+/**
+ * Poll the result endpoint for a detached chat invocation. Returns the
+ * cached terminal payload, a "still running" sentinel, or null if the
+ * server has forgotten the request (expired / restart).
+ *
+ * Used by Demo.tsx on remount to reattach to a chat that was in flight
+ * when the user navigated away.
+ */
+export type ChatResultPoll =
+  | { status: 'running' }
+  | { status: 'completed'; response: ChatResponse }
+  | { status: 'error'; error: string }
+  | { status: 'unknown' };
+
+interface BackendChatResultPoll {
+  status: 'running' | 'completed' | 'error';
+  response?: BackendChatResponse;
+  error?: string;
+}
+
+export async function getChatResult(
+  requestId: string,
+  sessionId: string,
+): Promise<ChatResultPoll> {
+  try {
+    const res = await apiFetch<BackendChatResultPoll>(
+      `${BASE}/chat/result/${encodeURIComponent(requestId)}`,
+      { method: 'GET', timeoutMs: 10_000 },
+    );
+    if (res.status === 'running') return { status: 'running' };
+    if (res.status === 'error') {
+      return { status: 'error', error: res.error ?? 'Unknown error' };
+    }
+    if (res.status === 'completed' && res.response) {
+      return {
+        status: 'completed',
+        response: {
+          session_id: sessionId,
+          reply: res.response.response,
+          status: res.response.status,
+          request_id: res.response.request_id ?? null,
+          citations: res.response.citations ?? [],
+          pending_approvals: [],
+          tool_calls: [],
+        },
+      };
+    }
+    return { status: 'unknown' };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return { status: 'unknown' };
+    throw e;
+  }
 }
 
 /**

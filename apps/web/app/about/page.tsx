@@ -68,7 +68,7 @@ export default function AboutPage() {
             Shekhar Dudi
           </h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Lead AI Engineer building production-grade GenAI, agentic systems, and AI
+            AI Engineering Leader building production-grade GenAI, agentic systems, and AI
             platforms that survive beyond the demo.
           </p>
 
@@ -119,8 +119,7 @@ export default function AboutPage() {
 
           {/* Callout */}
           <p className="border-l-2 border-blue-400/60 pl-4 text-foreground font-medium">
-            I don&rsquo;t just build AI demos. I build AI that works at 3&nbsp;AM on a
-            Tuesday.
+            I help startups and enterprises bridge the gap between &lsquo;possible&rsquo; and &lsquo;production&rsquo; by building AI at scale.
           </p>
 
           <p>

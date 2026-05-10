@@ -10,6 +10,7 @@ import {
   cancelChat,
   chat,
   decideApproval,
+  getChatResult,
   listApprovals,
   type ApprovalItem,
 } from './client';
@@ -35,12 +36,22 @@ function newSessionId() {
   return `demo-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+function newRequestId() {
+  return crypto.randomUUID();
+}
+
 // Persist chat surface state across route navigation so the user can move
 // between solutions mid-conversation and come back without losing context.
-// We deliberately only persist the chat history, the active personas, the
-// inner tab, and the session_id — NOT `busy` (the in-flight chat call can't
-// be re-attached, so we always rehydrate to idle and surface a soft hint).
+// `pendingRequestId` is the load-bearing field for the resume contract: if
+// it's set on rehydrate, the corresponding chat task is still running on
+// the backend (or just completed and the result is sitting in cache) — we
+// poll GET /chat/result/{request_id} on mount to reattach.
 const STORAGE_KEY = 'agentic-hr-demo-v1';
+
+// How long to keep polling before giving up. Backend cache TTL is 10 min
+// so going past that is wasted effort; cap at 8 min to leave some slack.
+const POLL_TIMEOUT_MS = 8 * 60_000;
+const POLL_INTERVAL_MS = 2_000;
 
 type PersistedShape = {
   innerTab: 'chat' | 'approvals';
@@ -48,7 +59,10 @@ type PersistedShape = {
   employeeEmail: string;
   managerEmail: string;
   messages: ChatMessage[];
-  wasBusy: boolean;
+  /** UUID of an in-flight chat request — if present on rehydrate the
+   *  resume effect polls the backend for its result. Cleared after the
+   *  result lands (success or error) or after the poll deadline. */
+  pendingRequestId: string | null;
   _savedAt: number;
 };
 
@@ -84,12 +98,14 @@ export default function Demo() {
       : welcomeMessages(),
   );
   const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(() =>
-    persisted?.wasBusy
-      ? 'Previous request was interrupted when you navigated away — try again.'
-      : null,
+  // If we land here with a persisted pendingRequestId, treat the chat as
+  // still in flight (backend may still be processing or have just cached
+  // the result). The resume effect below picks it up and polls.
+  const [busy, setBusy] = useState(() => Boolean(persisted?.pendingRequestId));
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(
+    () => persisted?.pendingRequestId ?? null,
   );
+  const [error, setError] = useState<string | null>(null);
   const [showGuideDock, setShowGuideDock] = useState(true);
   const [guideTab, setGuideTab] = useState<'examples' | 'tips'>('examples');
   const [guideTabTouched, setGuideTabTouched] = useState(false);
@@ -136,8 +152,8 @@ export default function Demo() {
   }, [messages, busy]);
 
   // Persist the chat surface so navigating between solutions mid-conversation
-  // doesn't reset the UI. `busy` is recorded so a rehydration after an
-  // unrecoverable in-flight chat shows the soft "interrupted" hint above.
+  // doesn't reset the UI. `pendingRequestId` is the load-bearing field — when
+  // it's non-null the resume effect picks polling back up on remount.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -147,17 +163,115 @@ export default function Demo() {
         employeeEmail: employee.email,
         managerEmail: manager.email,
         messages,
-        wasBusy: busy,
+        pendingRequestId,
         _savedAt: Date.now(),
       };
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
     } catch {
       /* quota / disabled — drop persistence */
     }
-  }, [innerTab, sessionId, employee.email, manager.email, messages, busy]);
+  }, [innerTab, sessionId, employee.email, manager.email, messages, pendingRequestId]);
+
+  // Resume polling for a chat that was in flight when the user navigated
+  // away. The backend keeps the LangGraph task running across the client
+  // disconnect (chat.py uses asyncio.shield + result cache), so we just
+  // tail GET /chat/result/{id} until it returns completed / error / unknown.
+  // Mount-only — deliberately empty deps so we don't re-fire on state
+  // changes within this mount. eslint disabled accordingly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingRequestId) return;
+    const requestId = pendingRequestId;
+    const sid = sessionId;
+    const versionAtStart = session.state.version;
+    const handleId = `hr-chat-${sid}-${requestId.slice(0, 8)}`;
+    let cancelled = false;
+
+    // Surface this resumed call in the registry too so a Reset-all wipes
+    // it correctly.
+    session.registerJob({
+      id: handleId,
+      slug: 'agentic-hr',
+      workspace: 'chat',
+      startedAt: Date.now(),
+      cancel: () => {
+        cancelled = true;
+        void cancelChat(sid).catch(() => {});
+      },
+    });
+
+    (async () => {
+      const deadline = Date.now() + POLL_TIMEOUT_MS;
+      let consecutiveErrors = 0;
+      while (!cancelled && Date.now() < deadline) {
+        try {
+          const poll = await getChatResult(requestId, sid);
+          consecutiveErrors = 0;
+          if (cancelled) return;
+          if (!session.shouldAccept(versionAtStart)) {
+            // User reset / switched persona while we were polling. Drop
+            // the result silently — registry cancel already handled it.
+            return;
+          }
+          if (poll.status === 'completed') {
+            setMessages((m) => [
+              ...m,
+              {
+                role: 'assistant',
+                content: poll.response.reply,
+                tool_calls: poll.response.tool_calls,
+                citations: poll.response.citations,
+                status: poll.response.status,
+                request_id: poll.response.request_id,
+              },
+            ]);
+            // Approvals list refreshes on its own polling cadence (10-20s)
+            // so any pending_approval rows surfaced by this chat will show
+            // up on the next tick — no explicit refresh needed here.
+            return;
+          }
+          if (poll.status === 'error') {
+            setError(`Backend error: ${poll.error}`);
+            return;
+          }
+          if (poll.status === 'unknown') {
+            // Server forgot the request — most likely a backend restart.
+            // Surface a soft hint so the user knows to retry.
+            setError(
+              'The previous request couldn’t be recovered (server restart) — please send it again.',
+            );
+            return;
+          }
+          // status === 'running' — keep polling.
+        } catch {
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= 10) {
+            setError('Lost connection while resuming the previous request — please retry.');
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+      if (!cancelled && Date.now() >= deadline) {
+        setError('The previous request didn’t finish within the resume window — please retry.');
+      }
+    })().finally(() => {
+      session.unregisterJob(handleId);
+      if (!cancelled) {
+        setBusy(false);
+        setPendingRequestId(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Reset chat when persona changes — bumps version so any in-flight chat
-  // reply from the previous persona is dropped.
+  // reply from the previous persona is dropped. Clearing pendingRequestId
+  // also stops the resume poller from waiting on a request that's about
+  // to be cancelled by the version bump.
   function changeEmployee(p: Persona) {
     session.resetSolution();
     setEmployee(p);
@@ -166,6 +280,8 @@ export default function Demo() {
     setGuideTab('examples');
     setGuideTabTouched(false);
     setError(null);
+    setPendingRequestId(null);
+    setBusy(false);
   }
 
   function newConversation() {
@@ -174,6 +290,8 @@ export default function Demo() {
     setMessages(welcomeMessages(employee));
     setGuideTab('examples');
     setGuideTabTouched(false);
+    setPendingRequestId(null);
+    setBusy(false);
   }
 
   async function send(text: string) {
@@ -182,6 +300,11 @@ export default function Demo() {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setBusy(true);
     setError(null);
+    // Mint a request_id up-front and persist it so a navigation mid-call
+    // can reattach via getChatResult on remount. The backend keys its
+    // result cache by this id (chat.py:_RESULT_CACHE).
+    const requestId = newRequestId();
+    setPendingRequestId(requestId);
     // Snapshot the version at request time. If the user starts a new
     // conversation or switches persona while we're awaiting the reply,
     // shouldAccept(...) returns false and the response is dropped silently.
@@ -192,10 +315,8 @@ export default function Demo() {
       slug: 'agentic-hr',
       workspace: 'chat',
       startedAt: Date.now(),
-      // The chat round-trip is wrapped server-side as an asyncio.Task keyed
-      // by session_id. DELETE /chat/{session_id} cancels it and frees the
-      // LangGraph worker in real time — fired when the user resets the
-      // conversation, switches persona, or navigates to another solution.
+      // DELETE /chat/{session_id} cancels the in-flight LangGraph task —
+      // fired on persona switch / new conversation / Reset-all.
       cancel: () => {
         void cancelChat(sessionId).catch(() => {});
       },
@@ -205,6 +326,7 @@ export default function Demo() {
         session_id: sessionId,
         message: text,
         employee_email: employee.email,
+        request_id: requestId,
       });
       if (!session.shouldAccept(versionAtStart)) {
         // User reset / switched persona while we were awaiting the reply.
@@ -229,6 +351,7 @@ export default function Demo() {
     } finally {
       session.unregisterJob(handleId);
       setBusy(false);
+      setPendingRequestId(null);
     }
   }
 

@@ -10,11 +10,17 @@ class ChatRequest(BaseModel):
         message: The employee's message or question text.
         session_id: Optional UUID to group messages in one conversation session.
             Generated automatically by the API if not provided.
+        request_id: Optional client-supplied UUID identifying this single
+            chat round-trip. When provided, the backend caches the result
+            keyed by request_id so a client that disconnects mid-call (e.g.
+            the user navigated away) can reattach via GET /chat/result/{id}
+            once they come back.
     """
 
     employee_email: str
     message: str
     session_id: Optional[str] = None
+    request_id: Optional[str] = None
 
 
 class Citation(BaseModel):

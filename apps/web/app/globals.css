@@ -29,6 +29,13 @@
     --ring: 215 20% 75%;
   }
 
+  /* `clip` is the modern, painted-only equivalent of overflow-x: hidden but
+     iOS Safari < 16 ignores it on body and lets stray-wide children bleed
+     into a horizontal page scroll. Pin it on html as well, with `hidden`
+     as a safe, broadly-supported fallback for the same intent. */
+  html {
+    overflow-x: hidden;
+  }
   body {
     @apply bg-background text-foreground text-sm;
     font-feature-settings: 'cv11', 'ss01';

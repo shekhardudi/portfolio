@@ -82,10 +82,14 @@ export default function ScoutFeed({
     setAutoFollow(distanceFromBottom < 80);
   }
 
+  // Trigger the "thinking" indicator after a short idle stretch so the feed
+  // never looks frozen while we wait for the next backend tick. 700ms is
+  // short enough to feel responsive but long enough that it doesn't flicker
+  // against rapid event bursts.
   const showThinking =
     active &&
     (callbacks.length === 0 ||
-      (recentTickAt.current !== null && now - recentTickAt.current > 1300));
+      (recentTickAt.current !== null && now - recentTickAt.current > 700));
 
   useLayoutEffect(() => {
     if (!autoFollow) return;
@@ -95,16 +99,17 @@ export default function ScoutFeed({
   }, [callbacks.length, showThinking, autoFollow]);
 
   // Single-shot timer that arms after each new event so the thinking
-  // indicator can flip on once per idle stretch.
+  // indicator can flip on once per idle stretch. Matches showThinking's
+  // 700ms threshold above.
   useEffect(() => {
     if (!active) return;
-    const id = window.setTimeout(() => setNow(Date.now()), 1_300);
+    const id = window.setTimeout(() => setNow(Date.now()), 700);
     return () => window.clearTimeout(id);
   }, [active, callbacks.length]);
 
   const idlePhrase = module
     ? `${moduleLabel(module)} is collecting sources…`
-    : 'Pulse Scout is warming up…';
+    : 'Pulse Scout is warming up — first sources land in a few seconds.';
 
   return (
     <div
@@ -233,11 +238,20 @@ function ShimmerCard({ label }: { label: string }) {
       <div className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-muted/60">
         <Brain className="h-3.5 w-3.5 animate-pulse text-foreground/55" />
       </div>
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="h-3 w-2/3 animate-pulse rounded bg-muted/70" />
-        <div className="h-2.5 w-full animate-pulse rounded bg-muted/50" />
-        <div className="h-2.5 w-5/6 animate-pulse rounded bg-muted/40" />
-        <p className="pt-0.5 text-[11px] italic text-foreground/65">{label}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold text-foreground">thinking</span>
+          <span className="inline-flex gap-0.5">
+            <Dot delay="0ms" />
+            <Dot delay="160ms" />
+            <Dot delay="320ms" />
+          </span>
+        </div>
+        <div className="mt-2 space-y-2">
+          <div className="h-2.5 w-full animate-pulse rounded bg-muted/50" />
+          <div className="h-2.5 w-5/6 animate-pulse rounded bg-muted/40" />
+        </div>
+        <p className="mt-1.5 text-[11px] italic text-foreground/70">{label}</p>
       </div>
     </div>
   );
@@ -251,7 +265,7 @@ function ThinkingBubble({ label }: { label: string }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground">scanning</span>
+          <span className="font-semibold text-foreground">thinking</span>
           <span className="inline-flex gap-0.5">
             <Dot delay="0ms" />
             <Dot delay="160ms" />

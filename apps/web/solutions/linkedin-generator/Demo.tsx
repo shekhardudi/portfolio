@@ -81,6 +81,11 @@ export default function Demo() {
 
   return (
     <div className="space-y-3">
+      <p className="text-xs leading-relaxed text-foreground/85">
+        Heads up — Scout and Studio are long-running multi-agent jobs (1–10 minutes).
+        Feel free to navigate to other demos while they run; come back to this tab
+        and the run will still be in progress (or already done).
+      </p>
       <Tabs value={innerTab} onValueChange={(v) => setInnerTab(v as InnerTab)}>
         <TabsList className="flex-wrap gap-0">
           {/* ── Discovery group ── */}

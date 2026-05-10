@@ -99,6 +99,10 @@ export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props
   const [unavailable, setUnavailable] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Local "submitting" state for the click→ack window. `busy` only flips after
+  // startScout() returns; without this the button looks unresponsive for the
+  // ~1s round-trip and impatient users double-click.
+  const [submitting, setSubmitting] = useState(false);
 
   // Session integration: every API call is tagged with the current scout
   // workspace version. After a "Reset Scout" click, the version bumps and
@@ -223,7 +227,10 @@ export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props
   }
 
   async function run() {
-    if (busy || state.selected_modules.length === 0) return;
+    if (busy || submitting || state.selected_modules.length === 0) return;
+    // Flip the local submitting flag synchronously so the button shows the
+    // spinner before the network round-trip finishes.
+    setSubmitting(true);
     setUnavailable(false);
     setPicked(null);
     setStartedAt(Date.now());
@@ -265,6 +272,8 @@ export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props
           type: 'SCOUT_FAIL',
           error: e instanceof ApiError ? `${e.status} — ${e.body}` : (e as Error).message,
         });
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -547,12 +556,13 @@ export default function ScoutPanel({ state, dispatch, onImport, onReset }: Props
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <button
                 type="submit"
-                disabled={busy || state.selected_modules.length === 0}
-                className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background disabled:opacity-50"
+                disabled={busy || submitting || state.selected_modules.length === 0}
+                className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background transition active:scale-[0.98] disabled:opacity-50"
               >
-                {busy ? (
+                {busy || submitting ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Scouting…
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {submitting && !busy ? 'Starting…' : 'Scouting…'}
                   </>
                 ) : done ? (
                   <>
