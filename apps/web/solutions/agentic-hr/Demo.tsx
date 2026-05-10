@@ -184,7 +184,12 @@ export default function Demo() {
     const requestId = pendingRequestId;
     const sid = sessionId;
     const versionAtStart = session.state.version;
-    const handleId = `hr-chat-${sid}-${requestId.slice(0, 8)}`;
+    // Reuse the same handleId pattern as send() — keying on sessionId means
+    // a navigate-away → navigate-back cycle replaces the original send()'s
+    // registration in place via jobRegistry's overwrite-on-same-id behaviour
+    // (lib/session/jobRegistry.ts), rather than adding a sibling entry under
+    // a different id and inflating the running-jobs count.
+    const handleId = chatHandleId.current;
     let cancelled = false;
 
     // Surface this resumed call in the registry too so a Reset-all wipes

@@ -414,6 +414,27 @@ function load(): DemoState {
         ? runtime.scout_progress_module
         : '';
 
+    // Sanity-clamp the time-window inputs. A previous build let invalid
+    // values land in localStorage (e.g. an out-of-range number from a
+    // mid-typing keystroke), which then re-hydrated on every page load
+    // and made the default look like 729+ days instead of the intended
+    // 7. Drop anything outside the schema's allowed range and fall back
+    // to INITIAL.
+    const VALID_UNITS = ['days', 'weeks', 'months', 'years'] as const;
+    const rawPulseValue = (authored as Partial<DemoState>).pulse_value;
+    const pulseValueOk =
+      typeof rawPulseValue === 'number' &&
+      Number.isFinite(rawPulseValue) &&
+      rawPulseValue >= 1 &&
+      rawPulseValue <= 730;
+    if (!pulseValueOk) {
+      delete (authored as Record<string, unknown>).pulse_value;
+    }
+    const rawPulseUnit = (authored as Partial<DemoState>).pulse_unit;
+    if (!rawPulseUnit || !VALID_UNITS.includes(rawPulseUnit as typeof VALID_UNITS[number])) {
+      delete (authored as Record<string, unknown>).pulse_unit;
+    }
+
     // Authored fields override INITIAL; runtime overrides last so an
     // in-tab navigation picks the polling loop back up via the mount-resume
     // effects in ScoutPanel / ProductionStudio. A fresh tab finds

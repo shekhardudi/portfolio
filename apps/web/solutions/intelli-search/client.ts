@@ -107,22 +107,37 @@ function cleanText(value?: string): string | undefined {
 /**
  * Normalise a hostname-or-URL into an absolute https:// URL.
  *
- * Some upstream rows store LinkedIn / company URLs as bare hostnames
- * (`linkedin.com/company/canva`) or `www.linkedin.com/in/foo`. Without an
- * explicit scheme the browser treats them as RELATIVE paths — fine on
- * desktop where the user will notice the wrong target, but on mobile the
- * tap silently navigates inside the SPA basepath and looks like the link
- * is broken (especially LinkedIn deep-links, since iOS won't hand off to
- * the LinkedIn app without an absolute URL).
+ * Three concerns merged into one helper because they all fire together:
+ *
+ *   1. Schemeless rows. Upstream CSV stores URLs as
+ *      `linkedin.com/company/canva` (no scheme). Without `https://` the
+ *      <a href> is treated as a *relative* path, which on mobile silently
+ *      navigates inside the SPA basepath and looks like a broken link.
+ *   2. Protocol-relative rows. `//linkedin.com/...` → `https://...`.
+ *   3. LinkedIn apex → www. Apex `linkedin.com/company/<slug>` returns
+ *      "Page not found" on mobile LinkedIn (the apex doesn't carry the
+ *      mobile redirect rules, and iOS Universal Links only register the
+ *      `www.linkedin.com` host). Force the canonical `www.linkedin.com`
+ *      host so taps land on the actual profile page.
  */
 function normalizeUrl(value?: string): string | undefined {
   const cleaned = cleanText(value);
   if (!cleaned) return undefined;
-  // Already absolute (http/https/mailto/tel/…) — pass through untouched.
-  if (/^[a-z][a-z0-9+.-]*:/i.test(cleaned)) return cleaned;
-  // Protocol-relative (`//linkedin.com/...`) → upgrade to https.
-  if (cleaned.startsWith('//')) return `https:${cleaned}`;
-  return `https://${cleaned.replace(/^\/+/, '')}`;
+  let abs: string;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(cleaned)) {
+    // Already absolute — pass through but still apply the linkedin host fixup below.
+    abs = cleaned;
+  } else if (cleaned.startsWith('//')) {
+    abs = `https:${cleaned}`;
+  } else {
+    abs = `https://${cleaned.replace(/^\/+/, '')}`;
+  }
+  // Apex linkedin.com → www.linkedin.com. Match only the host segment so
+  // we don't accidentally rewrite paths that happen to contain "linkedin.com".
+  return abs.replace(
+    /^(https?:\/\/)(?:www\.)?linkedin\.com\b/i,
+    '$1www.linkedin.com',
+  );
 }
 
 function toDisplayCase(value?: string): string | undefined {

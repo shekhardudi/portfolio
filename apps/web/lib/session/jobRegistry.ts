@@ -47,9 +47,21 @@ class JobRegistryStore {
   getServerSnapshot = (): JobRegistrySnapshot => EMPTY_SNAPSHOT;
 
   register(handle: JobHandle): void {
-    if (this.jobs.has(handle.id)) return; // idempotent
+    // Re-registering the same id REPLACES the handle. This matters when
+    // a panel remounts and resumes an in-flight job (scout/intelli-search/
+    // agentic-hr): the new mount needs its own cancel closure to take
+    // effect on Reset-all, and the count must stay flat (no duplicate
+    // entry under a sibling id). The previous behaviour was idempotent
+    // and silently kept the original cancel callback, which leaked
+    // stale closures and — combined with sibling ids — let the count
+    // drift above the actual number of running jobs.
+    const existed = this.jobs.has(handle.id);
     this.jobs.set(handle.id, handle);
-    this.bump();
+    // Only bump if we actually changed the size — replacing a handle's
+    // cancel callback doesn't change the rendered count, but if React
+    // consumers care about handle identity we still want them to re-read.
+    // bump() is cheap so just always call it.
+    if (!existed) this.bump();
   }
 
   unregister(id: string): void {

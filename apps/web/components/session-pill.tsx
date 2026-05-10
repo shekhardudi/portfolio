@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { Activity, RotateCcw } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useToast } from './ui/toaster';
 import {
   useJobRegistry,
@@ -13,16 +12,17 @@ import { cn } from '@/lib/utils';
 /**
  * Floating session widget pinned to the bottom-right of the viewport.
  *
- * Rendered out of the normal document flow (instead of in the navbar) so
- * it stays visible while you scroll through long demo output, but doesn't
- * compete with the brand / nav for space at the top of every page.
+ * Tap the pill → opens a small menu with one action: "Reset all demos".
+ * The menu uses a hand-rolled popover (absolute-positioned panel +
+ * full-viewport backdrop) instead of Radix Popover because Radix's
+ * portal-based outside-click handling raced the inner button's tap on
+ * mobile Safari and dismissed the menu before the click registered.
+ * The hand-rolled version uses plain click events on a backdrop sibling
+ * to dismiss, which behaves the same on web and mobile.
  *
- * The pill is **dimmed and compact when idle** (a single dot — no label,
- * no chrome) and **lights up** when at least one job is in flight, with a
- * count badge. Click anywhere on the pill to open a single destructive
- * action — "Reset all demos" — which cancels in-flight jobs across every
- * solution, resets each demo to its initial state, and clears any saved
- * drafts/briefings/images. One button, no choices to make.
+ * The pill is **dimmed and compact when idle** (just an Activity icon)
+ * and **lights up** when at least one job is in flight, with a count
+ * badge.
  */
 export function SessionPill() {
   const { count } = useJobRegistry();
@@ -38,7 +38,10 @@ export function SessionPill() {
           + 'demo to its initial state, and clear all saved drafts, briefings, '
           + 'and generated images.',
       );
-      if (!ok) return;
+      if (!ok) {
+        setOpen(false);
+        return;
+      }
     }
     // Cancel jobs + bump session versions across every solution first so
     // any in-flight poll loops drop their next tick. Then wipe localStorage
@@ -55,9 +58,55 @@ export function SessionPill() {
   }
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 sm:bottom-6 sm:right-6">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+    <>
+      {/* Backdrop — captures taps anywhere outside the menu and dismisses.
+          Sibling of the pill so its z-index sits BETWEEN the page content
+          and the menu, letting touch events pass through to nothing else
+          while the menu is open. Plain onClick works the same on web and
+          mobile, unlike Radix's PointerDown-based outside-click. */}
+      {open && (
+        <div
+          aria-hidden
+          className="fixed inset-0 z-40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
+        <div className="relative">
+          {/* Menu — anchored to the trigger, opens upward. Visible only
+              when `open`. Width caps at the viewport so very narrow phones
+              don't see horizontal overflow. */}
+          {open && (
+            <div
+              role="menu"
+              aria-label="Session"
+              className="pointer-events-auto absolute bottom-full right-0 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-background p-2 shadow-md"
+            >
+              <div className="px-1 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-wider text-foreground/55">
+                Session
+              </div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onResetEverything}
+                // touch-manipulation removes the 300ms iOS tap delay; py-3
+                // keeps the row well above the 44pt mobile tap-target floor.
+                style={{ touchAction: 'manipulation' }}
+                className="flex w-full items-start gap-2.5 rounded-md px-2 py-3 text-left text-sm text-foreground transition active:bg-red-500/15 hover:bg-red-500/10"
+              >
+                <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                <span className="min-w-0">
+                  <span className="block font-medium">Reset all demos</span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-foreground/65">
+                    Cancels in-flight jobs, returns every demo to its initial
+                    state, and clears saved drafts, briefings, and images.
+                  </span>
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Trigger — the floating pill. */}
           <button
             type="button"
             aria-label={
@@ -65,13 +114,12 @@ export function SessionPill() {
                 ? `Session menu — ${count} ${count === 1 ? 'job' : 'jobs'} running`
                 : 'Session menu'
             }
-            // touch-manipulation removes the 300ms tap delay on iOS so the
-            // popover opens crisply on first tap instead of feeling unresponsive.
-            // Idle padding bumped to p-3 so the trigger meets the 44pt mobile
-            // tap-target minimum even when only the icon is shown.
+            aria-expanded={open}
+            aria-haspopup="menu"
+            onClick={() => setOpen((v) => !v)}
             style={{ touchAction: 'manipulation' }}
             className={cn(
-              'pointer-events-auto inline-flex items-center gap-1.5 rounded-full border shadow-md backdrop-blur transition',
+              'pointer-events-auto inline-flex items-center gap-1.5 rounded-full border shadow-md backdrop-blur transition active:scale-[0.97]',
               active
                 ? 'border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/25'
                 : 'border-foreground/25 bg-background/95 p-3 text-foreground/80 ring-1 ring-foreground/10 hover:border-foreground/50 hover:bg-muted hover:text-foreground',
@@ -95,42 +143,8 @@ export function SessionPill() {
               <Activity className="h-4 w-4" aria-hidden />
             )}
           </button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="end"
-          side="top"
-          // collisionPadding keeps the popover off the viewport edges on
-          // narrow phones; sideOffset gives a touch of breathing room above
-          // the trigger so it doesn't feel cramped against the thumb.
-          collisionPadding={12}
-          sideOffset={8}
-          className="w-64 max-w-[calc(100vw-1.5rem)] p-2"
-        >
-          <div className="px-1 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-wider text-foreground/55">
-            Session
-          </div>
-          <button
-            type="button"
-            onClick={onResetEverything}
-            // Bigger tap target (py-3, h-4 icon) and explicit
-            // touch-manipulation so a single tap on iOS opens the confirm
-            // immediately instead of being eaten by the synthetic-hover
-            // double-tap chain that older mobile Safari applies to
-            // hover-styled buttons.
-            style={{ touchAction: 'manipulation' }}
-            className="flex w-full items-start gap-2.5 rounded-md px-2 py-3 text-left text-sm text-foreground transition active:bg-red-500/15 hover:bg-red-500/10"
-          >
-            <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-            <span className="min-w-0">
-              <span className="block font-medium">Reset all demos</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-foreground/65">
-                Cancels in-flight jobs, returns every demo to its initial
-                state, and clears saved drafts, briefings, and images.
-              </span>
-            </span>
-          </button>
-        </PopoverContent>
-      </Popover>
-    </div>
+        </div>
+      </div>
+    </>
   );
 }
