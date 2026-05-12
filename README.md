@@ -29,14 +29,12 @@ infra/
   single-ec2/                 # current prod topology (docker + terraform)
   multi-ec2/                  # multi-instance topology (docker + terraform)
   local/                      # local backend docker runtime
-docs/                         # architecture, deployment, per-solution docs
+docs/                         # per-solution flow + architecture docs
 scripts/                      # compatibility wrappers + track-specific scripts
 ```
 
 ## Quick links
 
-- [Architecture](docs/architecture.md)
-- [Deployment guide](docs/deployment.md)
 - [intelli-search](docs/solutions/intelli-search.md)
 - [agentic-hr](docs/solutions/agentic-hr.md)
 - [linkedin-generator](docs/solutions/linkedin-generator.md)
@@ -75,8 +73,10 @@ Local backend-only runtime:
 
 ## Deployment
 
-See [docs/deployment.md](docs/deployment.md). One-line summary:
+Single-EC2 production stack lives in [infra/single-ec2/](infra/single-ec2/) —
+Terraform provisions the VPC/EC2/CloudFront/Route53/ACM, `docker-compose.prod.yml`
+runs every backend behind a host-level nginx. One-line summary:
 ```
-cd infra/single-ec2/terraform/envs/prod
+cd infra/single-ec2/terraform
 terraform init && terraform apply
 ```

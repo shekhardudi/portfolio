@@ -36,7 +36,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.config import get_settings, get_search_config
-from app.services.pii_service import detect_pii
+from app.guardrails import GuardrailAction, scrub_input
 from app.services.search_strategies import EventData
 from app.services.serpapi_client import SerpApiClient
 from app.services.tavily_client import TavilyClient
@@ -229,10 +229,22 @@ class AgenticPipeline:
         AgenticSearchStrategy._docs_to_results():
           {_id, _score, name, domain, industry, country, locality, _event_data}
         """
-        pii_types = detect_pii(query)
-        if pii_types:
-            logger.warning("pipeline_query_pii_blocked", pii_types=pii_types)
-            return []
+        # Guardrail pass on the user query. BLOCK (prompt injection) →
+        # return [] and let the orchestrator fall back. REDACT (email/phone) →
+        # swap in the masked text so we don't ship raw PII to Tavily / OpenAI.
+        settings = get_settings()
+        if settings.ENABLE_GUARDRAILS:
+            scrubbed, action, reason = scrub_input(query)
+            if action == GuardrailAction.BLOCK and settings.GUARDRAIL_BLOCK_ON_QUERY_INJECTION:
+                logger.warning(
+                    "pipeline.input.injection_blocked",
+                    query=query[:100],
+                    reason=reason,
+                )
+                return []
+            if action == GuardrailAction.REDACT:
+                logger.info("pipeline.input.pii_redacted", reason=reason)
+                query = scrubbed
 
         def _emit(phase: str, message: str) -> None:
             if progress_callback:
@@ -475,6 +487,39 @@ class AgenticPipeline:
             ai_summary = hits[0]
             citations = list(hits[1:])
 
+        # Web search results are attacker-controllable text — any page in the
+        # citations could carry a prompt-injection payload that the extraction
+        # LLM would otherwise execute. Scrub each hit's content (and the AI
+        # summary) before they get concatenated into the user message.
+        # BLOCK → replace content with a placeholder so the LLM never sees the
+        # payload. REDACT → mask the PII in place.
+        if get_settings().ENABLE_GUARDRAILS:
+            blocked = 0
+            redacted = 0
+            scrub_targets: list[TavilyResult] = list(citations)
+            if ai_summary is not None:
+                scrub_targets.append(ai_summary)
+            for hit in scrub_targets:
+                scrubbed_text, action, reason = scrub_input(hit.content)
+                if action == GuardrailAction.BLOCK:
+                    blocked += 1
+                    logger.info(
+                        "pipeline.input.injection_blocked",
+                        url=hit.url,
+                        reason=reason,
+                    )
+                    hit.content = "[redacted: suspected prompt injection]"
+                elif action == GuardrailAction.REDACT:
+                    redacted += 1
+                    hit.content = scrubbed_text
+            if blocked or redacted:
+                logger.info(
+                    "pipeline.input.guardrail_summary",
+                    blocked=blocked,
+                    redacted=redacted,
+                    total_hits=len(scrub_targets),
+                )
+
         citation_cap = self._citation_chars if ai_summary else self._content_chars
         if ai_summary:
             # AI Mode summary already contains the facts; citations are evidence
@@ -488,7 +533,7 @@ class AgenticPipeline:
             citations_text = "\n\n".join(
                 f"Title: {r.title}\nURL: {r.url}\n"
                 f"Published: {r.published_date or 'unknown'}\n"
-                f"Content: {r.content[:citation_cap]}"
+                f"Content: <external_content>{r.content[:citation_cap]}</external_content>"
                 for r in citations
             )
 

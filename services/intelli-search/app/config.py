@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     CLASSIFIER_CONFIDENCE_THRESHOLD: float = 0.7
     CLASSIFIER_TIMEOUT: int = 10  # seconds
 
+    # Guardrails (PII redaction + prompt-injection detection)
+    # Mirrors the pattern used by linkedin-generator / agentic-hr.
+    ENABLE_GUARDRAILS: bool = True
+    GUARDRAIL_MODE: str = "BLOCK_HIGH_RISK"
+    GUARDRAIL_BLOCK_ON_QUERY_INJECTION: bool = True
+
     # Redis Cache
     REDIS_URL: str = "redis://localhost:6379"
     CACHE_TTL_SECONDS: int = 10

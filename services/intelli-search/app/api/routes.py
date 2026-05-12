@@ -12,6 +12,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.guardrails import GuardrailAction, scrub_input
 from app.services.orchestrator import get_search_orchestrator
 from app.models.search import BasicSearchRequest, BasicSearchResponse
 from app.observability import log_search_execution
@@ -227,6 +228,27 @@ async def intelligent_search(
     ```
     """
     try:
+        # Edge guardrail pass — defence-in-depth alongside the per-service
+        # scrub in IntentClassifier and AgenticPipeline. Blocking here
+        # avoids wasted LLM spend (and an orchestrator init) on obvious
+        # injection payloads.
+        settings = get_settings()
+        if settings.ENABLE_GUARDRAILS:
+            scrubbed, action, reason = scrub_input(request.query)
+            if action == GuardrailAction.BLOCK and settings.GUARDRAIL_BLOCK_ON_QUERY_INJECTION:
+                logger.warning(
+                    "api.input.injection_blocked",
+                    query=request.query[:100],
+                    reason=reason,
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"input blocked: {reason}",
+                )
+            if action == GuardrailAction.REDACT:
+                logger.info("api.input.pii_redacted", reason=reason)
+                request.query = scrubbed
+
         _metrics = get_search_metrics()
         # Initialize orchestrator
         orchestrator = get_search_orchestrator()
@@ -302,7 +324,10 @@ async def intelligent_search(
         )
         
         return search_response
-        
+
+    except HTTPException:
+        # Preserve intentional 4xx responses (e.g. guardrail block, timeout).
+        raise
     except Exception as e:
         logger.error("intelligent_search_failed", error=str(e), query=request.query[:100])
         raise HTTPException(
