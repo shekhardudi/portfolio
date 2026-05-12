@@ -77,7 +77,7 @@ class CommunitySentimentScanner(BaseScanner):
                         days=days_arg or 0,
                         fn=lambda: self._tavily.search(
                             query=q,
-                            search_depth="basic",
+                            search_depth="advanced",
                             topic="news",
                             days=days_arg,
                             max_results=5,
@@ -88,13 +88,16 @@ class CommunitySentimentScanner(BaseScanner):
                         url = canonical_url(r.get("url", ""))
                         if url and url in covered_urls:
                             continue
-                        items.append({
+                        item = {
                             "title": r.get("title", ""),
                             "content": (r.get("content", "") or "")[:300],
                             "url": url or r.get("url", ""),
                             "source": "tavily_news",
                             "query": q,
-                        })
+                        }
+                        if r.get("publish_date"):
+                            item["published"] = r.get("publish_date")
+                        items.append(item)
                 except Exception as e:
                     _emit(f"tavily news '{q[:32]}…' failed: {e}", phase="warn")
 
@@ -108,12 +111,15 @@ class CommunitySentimentScanner(BaseScanner):
                         days=days_arg or 0,
                         fn=lambda: self._tavily.search(
                             query=q,
-                            search_depth="basic",
+                            search_depth="advanced",
                             topic="news",
                             include_domains=[
                                 "reddit.com/r/MachineLearning",
+                                "reddit.com/r/ArtificialIntelligence",
+                                "reddit.com/r/GenerativeAI",
                                 "reddit.com/r/LocalLLaMA",
                                 "reddit.com/r/singularity",
+                                "reddit.com/r/AI_Agents"
                             ],
                             days=days_arg,
                             max_results=4,
@@ -124,13 +130,16 @@ class CommunitySentimentScanner(BaseScanner):
                         url = canonical_url(r.get("url", ""))
                         if url and url in covered_urls:
                             continue
-                        items.append({
+                        item = {
                             "title": r.get("title", ""),
                             "content": (r.get("content", "") or "")[:300],
                             "url": url or r.get("url", ""),
                             "source": "reddit",
                             "query": q,
-                        })
+                        }
+                        if r.get("publish_date"):
+                            item["published"] = r.get("publish_date")
+                        items.append(item)
                 except Exception as e:
                     _emit(f"tavily reddit '{q[:32]}…' failed: {e}", phase="warn")
 
@@ -156,12 +165,19 @@ class CommunitySentimentScanner(BaseScanner):
                 url = canonical_url(h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}")
                 if url and url in covered_urls:
                     continue
-                items.append({
+                item = {
                     "title": h.get("title", ""),
                     "content": f"{h.get('points', 0)} pts, {h.get('num_comments', 0)} comments",
                     "url": url,
                     "source": "hackernews",
-                })
+                }
+                if h.get("created_at_i"):
+                    from datetime import datetime
+                    try:
+                        item["published"] = datetime.utcfromtimestamp(h.get("created_at_i")).isoformat() + "Z"
+                    except (ValueError, TypeError):
+                        pass
+                items.append(item)
         except Exception as e:
             _emit(f"hn algolia failed: {e}", phase="warn")
 

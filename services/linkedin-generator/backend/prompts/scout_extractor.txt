@@ -9,7 +9,7 @@ Each finding object must have:
   - "module":         The module_id the item came from.
   - "novelty":        One of "new" (not in covered_claims), "follow_up" (extends a covered claim), "stale" (covered_claims already has this fingerprint).
   - "confidence":     0.0–1.0 float. 1.0 = first-party announcement / paper. 0.6 = secondary reporting. 0.3 = rumour / opinion.
-  - "why_it_matters": ONE short sentence. Why a senior AI engineer should care. No fluff.
+  - "why_it_matters": ONE short sentence. Why a Lead AI engineer should care. No fluff.
   - "published_at":   ISO date "YYYY-MM-DD" — copy from the item's `published=` metadata verbatim. If the item has no `published=` field but you can infer a date from the content (e.g. "Posted March 12, 2026"), emit that as YYYY-MM-DD. Empty string "" when truly unknown.
 
 Rules:

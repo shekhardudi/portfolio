@@ -63,7 +63,6 @@ writing_task:
     as {author_name}.
 
     Author persona:
-    - Name: {author_name}
     - Title: {author_title}
     - Location: {author_location}
 

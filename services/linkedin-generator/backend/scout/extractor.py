@@ -170,6 +170,8 @@ def extract(
             it["content"] = scrubbed
     if blocked or redacted:
         log.info("scout.input.guardrail_summary", blocked=blocked, redacted=redacted)
+    else:
+        log.info("scout.input.no_issues_detected")
 
     covered_lines = []
     for fp in list(snapshot.covered_claim_fingerprints)[:60]:

@@ -42,7 +42,7 @@ CATEGORY GUIDE — use these to classify each signal:
   - strategy  → market analysis, career moves, hiring, long-form takes, business angles
 
 CONSTRAINTS:
-  - Produce 4–8 signals total. AIM for AT LEAST ONE signal per non-empty source module
+  - Produce 6-12 signals total. AIM for AT LEAST ONE signal per non-empty source module
     when the findings allow — under-represented modules (top_newsletters, community,
     expert) deserve a slot if they have any decent finding. Do NOT let frontier_labs
     dominate every slot.
@@ -54,8 +54,7 @@ CONSTRAINTS:
     exactly. Set primary_module to the module of the first cited finding.
   - 0–3 themes (optional cross-signal narratives — only if a real connection exists).
   - 1–4 gaps. 1–4 action_items.
-  - Prefer findings with novelty="new" or "follow_up". Stale findings allowed only if
-    they anchor a debate.
+  - Prefer findings with novelty="new" or "follow_up". 
   - post_angle is the most important field for the user. It must be specific, opinionated,
     and feel like something a thoughtful practitioner would actually post. NO marketing
     voice. NO "in today's fast-paced AI landscape" energy.

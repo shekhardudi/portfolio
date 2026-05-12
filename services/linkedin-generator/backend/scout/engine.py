@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional
 
 import httpx
 
+from backend.core.logging import get_logger
 from backend.core.paths import (
     new_run_id,
     outputs_dir,
@@ -39,6 +40,9 @@ from .types import Briefing, CoveredClaim, IndexRow, StageUsage
 
 
 ProgressCallback = Callable[[int, int, Optional[dict[str, Any]]], None]
+
+
+log = get_logger("scout.engine")
 
 
 class PulseScout:
@@ -70,8 +74,20 @@ class PulseScout:
         s = get_settings()
         try:
             r = httpx.get(f"{s.ollama_base_url}/api/tags", timeout=3.0)
-            return r.status_code == 200
-        except Exception:
+            healthy = r.status_code == 200
+            log.info(
+                "scout.health.ollama_checked",
+                base_url=s.ollama_base_url,
+                status_code=r.status_code,
+                healthy=healthy,
+            )
+            return healthy
+        except Exception as exc:
+            log.warning(
+                "scout.health.ollama_check_failed",
+                base_url=s.ollama_base_url,
+                error=str(exc),
+            )
             return False
 
     # ------------------------------------------------------------------
@@ -112,12 +128,25 @@ class PulseScout:
         progress_callback: Optional[ProgressCallback] = None,
     ) -> tuple[str, dict, dict | None]:
         """Run the v2 pipeline. Returns (markdown, cost_breakdown, briefing_dict)."""
+        invalid_modules = [m for m in modules if m not in self.MODULE_REGISTRY]
         selected = [self.MODULE_REGISTRY[m] for m in modules if m in self.MODULE_REGISTRY]
+        if invalid_modules:
+            log.warning("scout.run.invalid_modules", invalid_modules=invalid_modules)
         if not selected:
+            log.warning("scout.run.no_valid_modules", requested_modules=modules)
             return "_No valid modules selected._", {}, None
 
         run_id = new_run_id()
         run_dir = scout_run_dir(run_id)
+        log.info(
+            "scout.run.started",
+            run_id=run_id,
+            requested_modules=modules,
+            selected_modules=[m.MODULE_ID for m in selected],
+            days=days,
+            concurrency=self._concurrency,
+            memory_days=self._memory_days,
+        )
 
         total_steps = 1 + len(selected) + 1 + 1 + 1  # memory + N + extract + synth + persist
         step = 0
@@ -131,6 +160,13 @@ class PulseScout:
         # ---- 1. Memory ----
         index_rows = scout_memory.read_index(scout_index_path(), days=self._memory_days)
         snapshot = scout_memory.build_snapshot(index_rows)
+        log.info(
+            "scout.stage.memory.loaded",
+            run_id=run_id,
+            covered_urls=len(snapshot.covered_urls),
+            covered_claims=len(snapshot.covered_claim_fingerprints),
+            prior_briefings=snapshot.briefings_count,
+        )
         _tick({
             "module": "memory",
             "phase": "done",
@@ -152,6 +188,13 @@ class PulseScout:
             try:
                 return scanner.gather(days=days, snapshot=snapshot, progress=_module_progress)
             except Exception as e:
+                log.exception(
+                    "scout.stage.gather.module_failed",
+                    run_id=run_id,
+                    module_id=scanner.MODULE_ID,
+                    module_label=scanner.MODULE_LABEL,
+                    error=str(e),
+                )
                 return ScanResult(
                     module_id=scanner.MODULE_ID,
                     module_label=scanner.MODULE_LABEL,
@@ -166,6 +209,24 @@ class PulseScout:
                     sc = futures[fut]
                     res = fut.result()
                     scan_results.append(res)
+                    if res.error:
+                        log.warning(
+                            "scout.stage.gather.module_completed",
+                            run_id=run_id,
+                            module_id=sc.MODULE_ID,
+                            module_label=sc.MODULE_LABEL,
+                            status="error",
+                            error=res.error,
+                        )
+                    else:
+                        log.info(
+                            "scout.stage.gather.module_completed",
+                            run_id=run_id,
+                            module_id=sc.MODULE_ID,
+                            module_label=sc.MODULE_LABEL,
+                            status="ok",
+                            items=len(res.items),
+                        )
                     _tick({
                         "module": sc.MODULE_ID,
                         "phase": "error" if res.error else "done",
@@ -179,6 +240,24 @@ class PulseScout:
             for sc in selected:
                 res = _run_one(sc)
                 scan_results.append(res)
+                if res.error:
+                    log.warning(
+                        "scout.stage.gather.module_completed",
+                        run_id=run_id,
+                        module_id=sc.MODULE_ID,
+                        module_label=sc.MODULE_LABEL,
+                        status="error",
+                        error=res.error,
+                    )
+                else:
+                    log.info(
+                        "scout.stage.gather.module_completed",
+                        run_id=run_id,
+                        module_id=sc.MODULE_ID,
+                        module_label=sc.MODULE_LABEL,
+                        status="ok",
+                        items=len(res.items),
+                    )
                 _tick({
                     "module": sc.MODULE_ID,
                     "phase": "error" if res.error else "done",
@@ -191,6 +270,15 @@ class PulseScout:
 
         # ---- 3. Extract ----
         findings, extractor_usage = extract(scan_results, snapshot)
+        log.info(
+            "scout.stage.extract.completed",
+            run_id=run_id,
+            findings=len(findings),
+            model=extractor_usage.model,
+            input_tokens=extractor_usage.input_tokens,
+            output_tokens=extractor_usage.output_tokens,
+            cost_usd=extractor_usage.cost_usd,
+        )
         _tick({
             "module": "extractor",
             "phase": "done",
@@ -215,6 +303,18 @@ class PulseScout:
                 },
             )
             synth_usage = StageUsage()
+        log.info(
+            "scout.stage.synthesize.completed",
+            run_id=run_id,
+            used_fallback=not bool(findings),
+            themes=len(briefing.themes),
+            tensions=len(briefing.tensions),
+            findings=len(briefing.findings),
+            model=synth_usage.model,
+            input_tokens=synth_usage.input_tokens,
+            output_tokens=synth_usage.output_tokens,
+            cost_usd=synth_usage.cost_usd,
+        )
         _tick({
             "module": "synthesizer",
             "phase": "done",
@@ -250,10 +350,24 @@ class PulseScout:
         # Backwards-compat: legacy pulse_report.md location.
         legacy_path = outputs_dir() / "pulse_report.md"
         legacy_path.write_text(markdown)
+        log.info(
+            "scout.stage.persist.completed",
+            run_id=run_id,
+            run_dir=str(run_dir),
+            legacy_path=str(legacy_path),
+            indexed_claims=len(claims),
+            gaps=len(briefing.gaps),
+        )
 
         # Errors footer.
         errs = [(r.module_label, r.error) for r in scan_results if r.error]
         if errs:
+            log.warning(
+                "scout.stage.gather.completed_with_warnings",
+                run_id=run_id,
+                warning_count=len(errs),
+                modules=[lbl for lbl, _ in errs],
+            )
             err_block = "\n".join(f"- **{lbl}**: {e}" for lbl, e in errs)
             markdown += f"\n\n---\n_Scanner warnings:_\n{err_block}\n"
             (run_dir / "briefing.md").write_text(markdown)
@@ -282,5 +396,13 @@ class PulseScout:
             },
             "total_cost_usd": total_cost,
         }
+
+        log.info(
+            "scout.run.completed",
+            run_id=run_id,
+            total_cost_usd=total_cost,
+            total_findings=len(briefing.findings),
+            modules_used=modules_used,
+        )
 
         return markdown, cost_breakdown, briefing.model_dump()

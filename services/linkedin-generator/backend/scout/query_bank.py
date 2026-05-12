@@ -17,12 +17,16 @@ from .types import MemorySnapshot
 
 
 COMMUNITY_SENTIMENT_BANK = [
-    "OpenAI Anthropic Google Meta Mistral xAI announced released this week",
-    "GPT Claude Gemini Llama new feature shipped production",
-    "AI agent production deployment postmortem outage",
+    "enterprise AI adoption challenges",
+    "enterprise AI security concerns",
+    "agentic loop token burn cost failure report",
     "AI model benchmark beats SOTA leaderboard results",
-    "open source LLM release weights license",
-    "AI startup funding acquisition strategic partnership",
+    "limitations of current LLMs",
+    "AI breakthrough production use cases",
+    "Ai startups funsing rounds notable news",
+    "AI regulation policy news",
+    "AI ethics controversy",
+    "AI impact on jobs news",
 ]
 
 
@@ -36,8 +40,11 @@ EXPERT_SYNTHESIS_BANK = [
 
 # Community-sentiment subreddit queries — always run.
 COMMUNITY_SENTIMENT_SUBREDDIT_QUERIES = [
-    "AI model release new",
+    "latest news in ai",
+    "what are people worried about in ai",
+    "AI hype vs reality 2026",
     "AI tool launched this week",
+    "impact of AI agents on jobs"
 ]
 
 
