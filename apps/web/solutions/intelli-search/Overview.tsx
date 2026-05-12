@@ -129,12 +129,12 @@ export default function Overview() {
           {[
             'FastAPI',
             'OpenSearch (kNN + BM25)',
-            'sentence-transformers (all-MiniLM-L6-v2)',
-            'GPT-4o-mini (classifier)',
-            'GPT-4o (agentic)',
             'Redis (facet cache)',
             'Tavily (web + LinkedIn tools)',
             'SSE streaming',
+            'GPT-4o-mini (classifier)',
+            'GPT-4o (agentic extractor)',
+            'all-MiniLM-L6-v2 (embeddings)',
           ].map((item) => (
             <span
               key={item}

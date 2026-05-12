@@ -42,6 +42,18 @@ export function SolutionCard({ meta }: { meta: SolutionMeta }) {
           </span>
         ))}
       </div>
+      {meta.models && meta.models.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {meta.models.map((model) => (
+            <span
+              key={model}
+              className="rounded-md border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground/80"
+            >
+              {model}
+            </span>
+          ))}
+        </div>
+      )}
     </Link>
   );
 }

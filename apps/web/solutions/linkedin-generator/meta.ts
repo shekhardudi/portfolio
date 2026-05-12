@@ -9,7 +9,8 @@ export const meta: SolutionMeta = {
   status: 'live',
   featured: true,
   hero: { accent: 'from-amber-500 to-orange-700', icon: 'PenLine' },
-  stack: ['CrewAI', 'FastAPI', 'OpenAI', 'Anthropic', 'Tavily', 'gpt-image-1'],
+  stack: ['CrewAI', 'FastAPI', 'Tavily'],
+  models: ['GPT-5', 'Claude Opus 4-7', 'Claude Sonnet 4-6', 'GPT-4o-mini', 'gpt-image-1'],
   highlights: [
     'Pulse Scout: Agentic Market Analyst for AI trends, across multiple signals and sources',
     'Multi-agent Crew: Researcher → Writer → Critic → Visual Director',

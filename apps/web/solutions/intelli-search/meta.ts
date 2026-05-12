@@ -9,7 +9,8 @@ export const meta: SolutionMeta = {
   status: 'live',
   featured: true,
   hero: { accent: 'from-cyan-500 to-blue-700', icon: 'Search' },
-  stack: ['FastAPI', 'OpenSearch', 'sentence-transformers', 'GPT-4o-mini', 'Redis', 'Tavily / SerpAPI'],
+  stack: ['FastAPI', 'OpenSearch', 'sentence-transformers', 'Redis', 'Tavily / SerpAPI'],
+  models: ['GPT-4o-mini', 'GPT-4o'],
   highlights: [
     'LLM intent classifier picks regular / semantic / agentic per query',
     'BM25 + vector kNN fused with Reciprocal Rank Fusion',

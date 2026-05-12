@@ -10,6 +10,7 @@ export const meta: SolutionMeta = {
   featured: true,
   hero: { accent: 'from-violet-500 to-fuchsia-700', icon: 'Users' },
   stack: ['FastAPI', 'LangGraph', 'pgvector', 'NocoDB', 'Gitea', 'Mattermost'],
+  models: ['Claude Haiku 4-5', 'Claude Sonnet 4-6'],
   highlights: [
     'Intent triage routes to policy / leave / access subgraphs',
     'Self-grading policy RAG over pgvector with citations',

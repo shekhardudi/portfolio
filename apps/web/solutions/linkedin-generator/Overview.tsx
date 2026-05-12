@@ -115,10 +115,13 @@ export default function Overview() {
             'Next.js',
             'crewAI',
             'FastAPI',
-            'GPT-5',
-            'Claude Opus & Sonnet',
             'Tavily',
             'Async Queues',
+            'GPT-5 (researcher)',
+            'Claude Opus 4-7 (writer)',
+            'Claude Sonnet 4-6 (critic · visual director)',
+            'GPT-4o-mini (scout extractor · synthesizer)',
+            'gpt-image-1 (cover image)',
           ].map((item) => (
             <span
               key={item}

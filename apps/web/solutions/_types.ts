@@ -18,6 +18,8 @@ export interface SolutionMeta {
     icon?: string;            // lucide icon name
   };
   stack: readonly string[];
+  // AI/LLM models used — shown as distinct pills on the card and in stack sections
+  models?: readonly string[];
   // Free-form bullets for the homepage card
   highlights: readonly string[];
   // Anchor for tabs the solution provides — order is preserved

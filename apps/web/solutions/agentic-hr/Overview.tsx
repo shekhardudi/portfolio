@@ -123,6 +123,9 @@ export default function Overview() {
             'Mattermost',
             'Approval Queue API',
             'Policy RAG Pipeline',
+            'Claude Haiku 4-5 (intent routing · grading)',
+            'Claude Sonnet 4-6 (answer generation)',
+            'all-MiniLM-L6-v2 (policy embeddings)',
           ].map((item) => (
             <span
               key={item}
