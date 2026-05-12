@@ -51,7 +51,7 @@ class AuthorityCrew:
             config=_agent_config(self.agents_config["technical_researcher"], s.crew_researcher_model),  # type: ignore[index]
             tools=[ArxivSearchTool(), TavilySearchTool()],
             max_iter=8,
-            max_execution_time=120,
+            max_execution_time=240,
             verbose=True,
         )
 

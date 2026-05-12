@@ -238,6 +238,24 @@ async def _post_worker(job: Job, store: JobStore) -> dict[str, Any]:
     except Exception:
         log.exception("post.research_extract_failed")
 
+    # When CrewAI's max_execution_time fires, the researcher's `raw` is
+    # populated with a fallback error string of the form
+    #   "Task '<full task description>' execution timed out after N seconds.
+    #    Consider increasing max_execution_time or optimizing the task."
+    # The writer task has `context: [research_task]` and faithfully treats
+    # that blob as its Fact Sheet, which is how the research prompt ends up
+    # leaking into the final post. Reject it here before extract_finalized_post
+    # gets a chance to render it.
+    _TIMEOUT_MARKERS = (
+        "execution timed out after",
+        "Consider increasing max_execution_time",
+    )
+    if research_md and any(m in research_md for m in _TIMEOUT_MARKERS):
+        log.warning("post.research_timed_out", topic=inputs.get("topic", ""))
+        raise RuntimeError(
+            "research stage timed out — try a more specific topic or angle"
+        )
+
     post_draft, _legacy_image_prompt = extract_finalized_post(raw)
     # extract_finalized_post returns "" when the Critic didn't emit the
     # `## Finalized Post` header. Treat that as a malformed run rather

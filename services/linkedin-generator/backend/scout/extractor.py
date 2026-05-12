@@ -75,19 +75,38 @@ def _flatten_items(results: list[ScanResult], cap: int, per_module_floor: int = 
                 if len(selected) >= cap:
                     return selected
 
-    # Pass 2: fill remaining slots by priority order.
-    rows: list[tuple[int, dict]] = []
-    for mod_id, bucket in by_module.items():
-        prio = _PRIORITY.get(mod_id, 40)
-        for it in bucket:
-            if id(it) in seen:
+    # Pass 2: fill remaining slots via priority-ordered round-robin so
+    # lower-priority modules can't be starved by frontier_labs /
+    # technical_deep_dive monopolising the global cap. Each round walks the
+    # priority-sorted module list and takes ONE not-yet-`seen` item from
+    # each module; repeat until the cap is hit or every bucket is drained.
+    # With a single non-empty module this collapses to a flat take-N — the
+    # same behaviour the old global-priority sort produced for solo runs.
+    mod_order = sorted(
+        by_module.keys(),
+        key=lambda m: _PRIORITY.get(m, 40),
+        reverse=True,
+    )
+    cursors: dict[str, int] = {m: 0 for m in mod_order}
+    while len(selected) < cap:
+        progressed = False
+        for mod_id in mod_order:
+            if len(selected) >= cap:
+                break
+            bucket = by_module[mod_id]
+            i = cursors[mod_id]
+            while i < len(bucket) and id(bucket[i]) in seen:
+                i += 1
+            if i >= len(bucket):
+                cursors[mod_id] = i
                 continue
-            rows.append((prio, it))
-    rows.sort(key=lambda x: x[0], reverse=True)
-    for _, it in rows:
-        if len(selected) >= cap:
+            it = bucket[i]
+            selected.append(it)
+            seen.add(id(it))
+            cursors[mod_id] = i + 1
+            progressed = True
+        if not progressed:
             break
-        selected.append(it)
     return selected
 
 

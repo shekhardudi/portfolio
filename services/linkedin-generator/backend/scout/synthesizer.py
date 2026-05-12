@@ -15,6 +15,18 @@ from .types import Briefing, Finding, MemorySnapshot, Signal, StageUsage, Theme,
 
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "scout_synthesizer.txt"
 
+# When the synthesizer LLM omits a module despite the Coverage requirement,
+# we fabricate one fallback Signal per missing module. category is required
+# on Signal but the fallback path has no LLM-picked one, so we pick a
+# sensible default per known module.
+_DEFAULT_CATEGORY_BY_MODULE: dict[str, str] = {
+    "frontier_labs": "release",
+    "technical_deep_dive": "research",
+    "top_newsletters": "strategy",
+    "community_sentiment": "debate",
+    "expert_synthesis": "strategy",
+}
+
 
 def _build_llm():
     s = get_settings()
@@ -80,8 +92,14 @@ def synthesize(
             model="", input_tokens=0, output_tokens=0, cost_usd=0.0
         )
 
-    findings_block = json.dumps(
-        [
+    # Group findings by module so the LLM physically sees each module as a
+    # distinct bucket instead of one long ranked list. Combined with the
+    # tightened Coverage Requirement in the prompt, this is what stops
+    # frontier_labs / technical_deep_dive monopolising the signal slots.
+    by_module: dict[str, list[dict]] = {}
+    for f in findings:
+        mod = f.module or "unknown"
+        by_module.setdefault(mod, []).append(
             {
                 "id": f.id,
                 "claim": f.claim,
@@ -92,14 +110,21 @@ def synthesize(
                 "why_it_matters": f.why_it_matters,
                 "published_at": f.published_at,
             }
-            for f in findings
-        ],
-        indent=2,
+        )
+    findings_block = json.dumps(by_module, indent=2)
+
+    coverage_modules = sorted(by_module.keys())
+    coverage_block = (
+        "\n".join(f"- {m}" for m in coverage_modules)
+        if coverage_modules
+        else "- (none)"
     )
+
     recent_gaps_block = "\n".join(f"- {g}" for g in snapshot.recent_gaps) or "(none)"
 
     prompt = _PROMPT_PATH.read_text().format(
         recent_gaps=recent_gaps_block,
+        coverage_modules=coverage_block,
         findings=findings_block,
     )
 
@@ -175,6 +200,42 @@ def synthesize(
                 finding_ids=ids,
                 primary_module=primary_module,
                 published_at=signal_pub,
+            )
+        )
+
+    # Coverage safety net: if any non-empty module ended up without a signal
+    # despite the prompt's hard rule, fabricate one Signal from its
+    # highest-confidence non-stale finding. Lower quality than an LLM-crafted
+    # signal (empty post_angle, headline = raw claim), but better than
+    # silently dropping the module from the briefing.
+    modules_with_findings = {
+        f.module for f in findings if f.novelty != "stale" and f.module
+    }
+    modules_with_signals = {s.primary_module for s in signals if s.primary_module}
+    missing = modules_with_findings - modules_with_signals
+    # Solo-run guard: with one module in play and the LLM having returned at
+    # least one signal, accept the run as well-covered even if primary_module
+    # is unset on those signals. Avoids fabricating a duplicate fallback.
+    if len(modules_with_findings) <= 1 and signals:
+        missing = set()
+    for mod_id in sorted(missing):
+        cand = max(
+            (f for f in findings if f.module == mod_id and f.novelty != "stale"),
+            key=lambda f: (f.confidence, f.published_at or ""),
+            default=None,
+        )
+        if cand is None:
+            continue
+        signals.append(
+            Signal(
+                id=f"s-fallback-{mod_id}",
+                category=_DEFAULT_CATEGORY_BY_MODULE.get(mod_id, "strategy"),  # type: ignore[arg-type]
+                headline=cand.claim[:140],
+                summary=cand.why_it_matters or cand.claim,
+                post_angle="",
+                finding_ids=[cand.id],
+                primary_module=mod_id,
+                published_at=cand.published_at,
             )
         )
 
