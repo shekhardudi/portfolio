@@ -11,9 +11,31 @@ from backend.api.deps import get_job_runner, get_job_store
 from backend.api.schemas import JobRef, ScoutJob, ScoutJobResult, ScoutRequest
 from backend.core.jobs import Job, JobRunner, JobStore
 from backend.core.logging import get_logger
+from backend.guardrails import scrub_output
 
 router = APIRouter(prefix="/scout", tags=["scout"])
 log = get_logger("api.scout")
+
+
+def _scrub_briefing_pii(briefing: dict | None) -> dict | None:
+    """Walk a briefing dict and strip emails/phones from every user-visible
+    text field. Names + everything else pass through. No-op for empty/None.
+
+    Mutates and returns the same dict for caller convenience.
+    """
+    if not isinstance(briefing, dict):
+        return briefing
+    if briefing.get("lead"):
+        briefing["lead"] = scrub_output(briefing["lead"])
+    for sig in briefing.get("signals") or []:
+        for field in ("headline", "summary", "post_angle"):
+            if isinstance(sig.get(field), str):
+                sig[field] = scrub_output(sig[field])
+    for f in briefing.get("findings") or []:
+        for field in ("claim", "why_it_matters"):
+            if isinstance(f.get(field), str):
+                f[field] = scrub_output(f[field])
+    return briefing
 
 
 @router.post("", response_model=JobRef, status_code=202)
@@ -111,8 +133,13 @@ async def _scout_worker(job: Job, store: JobStore) -> dict[str, Any]:
         return scout.run_with_briefing(modules=modules, days=days, progress_callback=progress_cb)
 
     report, cost_breakdown, briefing = await loop.run_in_executor(None, _run)
+    # Output guardrail: strip emails / phone numbers from every user-visible
+    # text in the briefing so stray PII the LLM may have echoed never reaches
+    # the client. Names + dates + URLs pass through unchanged so attribution
+    # ("Andrej Karpathy said X") and timestamps stay intact.
+    briefing = _scrub_briefing_pii(briefing)
     return {
-        "report_md": report,
+        "report_md": scrub_output(report) if isinstance(report, str) else report,
         "modules": modules,
         "days": days,
         "cost_breakdown": cost_breakdown,

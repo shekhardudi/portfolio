@@ -19,6 +19,7 @@ from backend.core.jobs import Job, JobRunner, JobStatus, JobStore
 from backend.core.logging import get_logger
 from backend.core.paths import new_run_id, post_run_dir
 from backend.core.settings import get_settings
+from backend.guardrails import GuardrailAction, scrub_input, scrub_output
 from backend.utils.cost_tracker import compute_post_cost
 from backend.utils.history import append_run
 from backend.utils.post_parser import extract_finalized_post
@@ -35,7 +36,30 @@ async def start_post(
     store: JobStore = Depends(get_job_store),
     runner: JobRunner = Depends(get_job_runner),
 ) -> JobRef:
-    job = store.create("posts", body.model_dump())
+    # Guardrail pass on the user-supplied free-text fields. BLOCK on prompt
+    # injection (HTTP 400); silently scrub email/phone in topic/leader_angle/
+    # author_vibe so they never reach the crew. Name fields are passthrough.
+    payload = body.model_dump()
+    for field in ("topic", "leader_angle", "author_vibe"):
+        value = payload.get(field)
+        if not isinstance(value, str) or not value:
+            continue
+        scrubbed, action, reason = scrub_input(value)
+        if action == GuardrailAction.BLOCK:
+            log.warning(
+                "post.input.injection_blocked",
+                field=field,
+                reason=reason,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"input blocked: {reason}",
+            )
+        if action == GuardrailAction.REDACT:
+            log.info("post.input.pii_redacted", field=field, reason=reason)
+            payload[field] = scrubbed
+
+    job = store.create("posts", payload)
     runner.schedule(job, _post_worker)
     return JobRef(job_id=job.id, status=job.status.value)
 
@@ -215,6 +239,16 @@ async def _post_worker(job: Job, store: JobStore) -> dict[str, Any]:
         log.exception("post.research_extract_failed")
 
     post_draft, _legacy_image_prompt = extract_finalized_post(raw)
+    # extract_finalized_post returns "" when the Critic didn't emit the
+    # `## Finalized Post` header. Treat that as a malformed run rather
+    # than letting downstream stages render the empty / partial draft.
+    if not post_draft.strip():
+        raise RuntimeError(
+            "model output malformed: critic returned no Finalized Post section"
+        )
+    # Output guardrail: strip stray emails/phones the crew may have written
+    # into the final post. Names + everything else pass through unchanged.
+    post_draft = scrub_output(post_draft)
     beats = extract_emotional_beats(research_md)
 
     stage["v"] = "visual_director"

@@ -90,6 +90,7 @@ def synthesize(
                 "novelty": f.novelty,
                 "confidence": f.confidence,
                 "why_it_matters": f.why_it_matters,
+                "published_at": f.published_at,
             }
             for f in findings
         ],
@@ -154,6 +155,16 @@ def synthesize(
         primary_module = (s_raw.get("primary_module") or "").strip()
         if not primary_module:
             primary_module = findings_by_id[ids[0]].module
+        # Signal's published_at = newest published_at among its referenced
+        # findings. Strings compare lexicographically when both sides are
+        # ISO YYYY-MM-DD, which is what we emit. Empty strings sort first
+        # so genuine dates win.
+        pub_dates = [
+            findings_by_id[fid].published_at
+            for fid in ids
+            if findings_by_id[fid].published_at
+        ]
+        signal_pub = max(pub_dates) if pub_dates else ""
         signals.append(
             Signal(
                 id=(s_raw.get("id") or f"s-{idx}").strip() or f"s-{idx}",
@@ -163,6 +174,7 @@ def synthesize(
                 post_angle=(s_raw.get("post_angle") or "").strip()[:400],
                 finding_ids=ids,
                 primary_module=primary_module,
+                published_at=signal_pub,
             )
         )
 

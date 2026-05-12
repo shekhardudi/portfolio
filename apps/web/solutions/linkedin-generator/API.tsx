@@ -7,8 +7,9 @@ const SCOUT_REQUEST = `POST /api/v1/scout
   "modules": [
     "community_sentiment",
     "technical_deep_dive",
-    "tooling_and_tactics",
-    "frontier_lab_watch"
+    "top_newsletters",
+    "frontier_labs",
+    "expert_synthesis"
   ],
   "days": 14          // 0–730; 7 is default
 }`;

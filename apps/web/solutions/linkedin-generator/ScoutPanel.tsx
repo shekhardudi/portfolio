@@ -1142,6 +1142,14 @@ function SignalCard({
           {cited.length > 4 && (
             <span className="text-foreground/55">+{cited.length - 4}</span>
           )}
+          {formatPubDate(signal.published_at) && (
+            <span
+              className="ml-auto rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-foreground/80"
+              title={`Newest cited source published ${signal.published_at}`}
+            >
+              {formatPubDate(signal.published_at)}
+            </span>
+          )}
         </div>
       )}
       {!picked && cited.length === 0 && <div className="h-4" />}
@@ -1320,6 +1328,14 @@ function FindingCard({
             {moduleLabel && (
               <span className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-foreground/80">
                 {moduleLabel}
+              </span>
+            )}
+            {formatPubDate(finding.published_at) && (
+              <span
+                className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-foreground/80"
+                title={`Published ${finding.published_at}`}
+              >
+                {formatPubDate(finding.published_at)}
               </span>
             )}
             {finding.source_url ? (
@@ -1704,4 +1720,28 @@ function trim(s: string, max: number): string {
   const stop = Math.max(win.lastIndexOf('. '), win.lastIndexOf('! '), win.lastIndexOf('? '));
   if (stop >= max * 0.6) return win.slice(0, stop + 1).trim();
   return win.trimEnd() + '…';
+}
+
+/**
+ * Format an ISO YYYY-MM-DD publish date as "Pub MMM DD" for the metadata
+ * pill on finding + signal cards. Returns "" for empty/invalid input so
+ * callers can use the truthy value as a render gate.
+ *
+ * We parse with an explicit UTC midnight to avoid the off-by-one that
+ * `new Date("2026-05-11")` causes in any timezone west of UTC (the bare
+ * date string is treated as UTC midnight, which is the previous calendar
+ * day locally).
+ */
+function formatPubDate(iso?: string): string {
+  if (!iso) return '';
+  // Accept full ISO timestamps too — strip to the leading date.
+  const datePart = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return '';
+  const d = new Date(`${datePart}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return '';
+  return `Pub ${d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })}`;
 }

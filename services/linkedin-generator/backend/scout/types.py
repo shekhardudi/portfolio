@@ -31,6 +31,10 @@ class Finding(BaseModel):
     novelty: Novelty = "new"
     confidence: float = Field(0.7, ge=0.0, le=1.0)
     why_it_matters: str = ""
+    # ISO YYYY-MM-DD when the underlying item was published (where the
+    # scanner could detect it — RSS pubDate, Atom published, ArXiv date).
+    # Empty string when unknown (e.g. crawled landing pages).
+    published_at: str = ""
 
 
 class Theme(BaseModel):
@@ -60,6 +64,10 @@ class Signal(BaseModel):
     post_angle: str = ""           # ready-to-paste LinkedIn hook (1-2 sentences)
     finding_ids: list[str] = Field(default_factory=list)
     primary_module: str = ""       # which module surfaced this (for attribution)
+    # Newest published_at across the signal's referenced findings — gives
+    # the picker a freshness pill without needing to drill into findings.
+    # Empty when no underlying finding has a dated source.
+    published_at: str = ""
 
 
 class Briefing(BaseModel):

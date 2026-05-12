@@ -11,93 +11,34 @@ URL diff against MemorySnapshot.covered_urls dedupes already-covered posts.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from typing import Any, Optional
-from xml.etree import ElementTree as ET
-
-import httpx
 
 from ..types import MemorySnapshot
 from ..url_utils import canonical_url
+from ._feeds import fetch_feed, parse_date
 from .base import BaseScanner, ProgressFn, ScanResult
 from .crawl4ai_helper import crawl_urls_sync
 from .time_utils import days_to_cutoff
 
 
-# (label, feed_url) — feeds verified as Atom/RSS endpoints.
+# (label, feed_url) — verified live in May 2026. Anthropic and Meta AI used
+# to expose /news/rss.xml and /blog/rss/ respectively but both now 404 with
+# no <link rel="alternate"> on the news index pages, so they moved to the
+# crawl path below.
 _RSS_FEEDS: list[tuple[str, str]] = [
     ("OpenAI", "https://openai.com/news/rss.xml"),
-    ("Anthropic", "https://www.anthropic.com/news/rss.xml"),
     ("Google DeepMind", "https://deepmind.google/blog/rss.xml"),
-    ("Meta AI", "https://ai.meta.com/blog/rss/"),
     ("HuggingFace", "https://huggingface.co/blog/feed.xml"),
 ]
 
-# Labs without a stable RSS — crawl their blog index.
+# Labs without a stable RSS — crawl their blog index. Anthropic + Meta AI
+# joined xAI / Mistral here when their RSS endpoints went 404.
 _CRAWL_FALLBACKS: list[tuple[str, str]] = [
+    ("Anthropic", "https://www.anthropic.com/news"),
+    ("Meta AI", "https://ai.meta.com/blog/"),
     ("xAI", "https://x.ai/blog"),
     ("Mistral", "https://mistral.ai/news/"),
 ]
-
-
-def _parse_date(s: str) -> Optional[datetime]:
-    if not s:
-        return None
-    # RSS pubDate (RFC-822)
-    try:
-        dt = parsedate_to_datetime(s)
-        if dt and dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception:
-        pass
-    # Atom updated/published (ISO 8601)
-    try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-
-def _fetch_feed(url: str, timeout: float = 8.0) -> list[dict]:
-    """Fetch + parse an RSS or Atom feed. Returns list of {title, link, summary, published}."""
-    resp = httpx.get(url, timeout=timeout, follow_redirects=True,
-                     headers={"User-Agent": "PulseScout/2.0"})
-    resp.raise_for_status()
-    root = ET.fromstring(resp.content)
-
-    # RSS 2.0
-    items: list[dict] = []
-    for item in root.iter("item"):
-        items.append({
-            "title": (item.findtext("title") or "").strip(),
-            "link": (item.findtext("link") or "").strip(),
-            "summary": (item.findtext("description") or "").strip()[:400],
-            "published": item.findtext("pubDate") or "",
-        })
-    if items:
-        return items
-
-    # Atom
-    ns = {"a": "http://www.w3.org/2005/Atom"}
-    for entry in root.iter("{http://www.w3.org/2005/Atom}entry"):
-        link_el = entry.find("a:link", ns)
-        link = link_el.get("href") if link_el is not None else ""
-        items.append({
-            "title": (entry.findtext("a:title", default="", namespaces=ns) or "").strip(),
-            "link": link,
-            "summary": (
-                entry.findtext("a:summary", default="", namespaces=ns)
-                or entry.findtext("a:content", default="", namespaces=ns)
-                or ""
-            ).strip()[:400],
-            "published": (
-                entry.findtext("a:updated", default="", namespaces=ns)
-                or entry.findtext("a:published", default="", namespaces=ns)
-                or ""
-            ),
-        })
-    return items
 
 
 class FrontierLabsScanner(BaseScanner):
@@ -126,13 +67,13 @@ class FrontierLabsScanner(BaseScanner):
         for lab, feed_url in _RSS_FEEDS:
             queries_used.append(feed_url)
             try:
-                entries = _fetch_feed(feed_url)
+                entries = fetch_feed(feed_url)
             except Exception as e:
                 _emit(f"{lab} feed failed: {e}", phase="warn")
                 continue
             kept = 0
             for e in entries[:8]:
-                pub_dt = _parse_date(e.get("published", ""))
+                pub_dt = parse_date(e.get("published", ""))
                 if cutoff and pub_dt and pub_dt < cutoff:
                     continue
                 url = canonical_url(e.get("link", ""))

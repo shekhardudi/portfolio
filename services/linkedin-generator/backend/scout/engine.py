@@ -31,9 +31,8 @@ from .modules.base import BaseScanner, ScanResult
 from .modules.community_sentiment import CommunitySentimentScanner
 from .modules.expert_synthesis import ExpertSynthesisScanner
 from .modules.frontier_labs import FrontierLabsScanner
-from .modules.long_form_strategy import LongFormStrategyScanner
 from .modules.technical_deep_dive import TechnicalDeepDiveScanner
-from .modules.tooling_and_tactics import ToolingAndTacticsScanner
+from .modules.top_newsletters import TopNewslettersScanner
 from .renderer import render_briefing
 from .synthesizer import synthesize as synth_briefing
 from .types import Briefing, CoveredClaim, IndexRow, StageUsage
@@ -55,8 +54,7 @@ class PulseScout:
             "frontier_labs": FrontierLabsScanner(),
             "community_sentiment": CommunitySentimentScanner(self._tavily_key),
             "technical_deep_dive": TechnicalDeepDiveScanner(),
-            "tooling_and_tactics": ToolingAndTacticsScanner(),
-            "long_form_strategy": LongFormStrategyScanner(),
+            "top_newsletters": TopNewslettersScanner(),
             "expert_synthesis": ExpertSynthesisScanner(self._tavily_key),
         }
 

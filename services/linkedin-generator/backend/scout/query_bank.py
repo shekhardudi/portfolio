@@ -42,12 +42,17 @@ COMMUNITY_SENTIMENT_SUBREDDIT_QUERIES = [
 
 
 # ArXiv queries — small bank, always run all (free, dedupe is cheap).
+#
+# Each query pins an arxiv category (cs.CL, cs.LG, cs.AI, cs.CV) so we don't
+# match unrelated physics/math papers that happen to mention the keywords.
+# `ti:` searches the title field directly — far less noise than the default
+# `all:` which scans abstracts + comments + metadata.
 TECHNICAL_DEEP_DIVE_QUERIES = [
-    "(large language model OR LLM)",
-    "(AI agent OR multi-agent OR tool use)",
-    "(multimodal OR vision language model)",
-    "(reasoning OR chain of thought OR scaling laws)",
-    "(alignment OR RLHF OR AI safety)",
+    'cat:cs.CL AND (ti:"large language model" OR ti:LLM OR ti:pretraining)',
+    'cat:cs.AI AND (ti:agent OR ti:"tool use" OR ti:"multi-agent")',
+    'cat:cs.CV AND (ti:multimodal OR ti:"vision language" OR ti:VLM)',
+    'cat:cs.LG AND (ti:reasoning OR ti:"chain of thought" OR ti:"scaling laws")',
+    'cat:cs.AI AND (ti:alignment OR ti:RLHF OR ti:"AI safety")',
 ]
 
 

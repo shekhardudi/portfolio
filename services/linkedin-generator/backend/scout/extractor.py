@@ -12,9 +12,13 @@ from langchain_core.messages import HumanMessage
 
 from ..core.pricing import text_cost
 from ..core.settings import get_settings
+from ..core.logging import get_logger
+from ..guardrails import GuardrailAction, scrub_input
 from .memory import claim_fingerprint
 from .modules.base import ScanResult
 from .types import Finding, MemorySnapshot, StageUsage
+
+log = get_logger("scout.extractor")
 
 
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "scout_extractor.txt"
@@ -24,8 +28,7 @@ _PRIORITY = {
     "frontier_labs": 100,
     "technical_deep_dive": 90,
     "expert_synthesis": 80,
-    "tooling_and_tactics": 60,
-    "long_form_strategy": 55,
+    "top_newsletters": 60,
     "community_sentiment": 50,
 }
 
@@ -49,6 +52,12 @@ def _flatten_items(results: list[ScanResult], cap: int, per_module_floor: int = 
                 "content": (it.get("content", "") or it.get("abstract", ""))[:280],
                 "url": it.get("url", ""),
                 "source": it.get("source", r.module_id),
+                # published: structured ISO date from the scanner where
+                # available (RSS pubDate / Atom published / ArXiv date).
+                # cutoff_date: extractor uses this to soft-drop landing-page
+                # items whose in-content date predates the requested window.
+                "published": it.get("published", ""),
+                "cutoff_date": it.get("cutoff_date", ""),
             })
 
     selected: list[dict] = []
@@ -139,17 +148,49 @@ def extract(
     if not items:
         return [], StageUsage(model="", input_tokens=0, output_tokens=0, cost_usd=0.0)
 
+    # Guardrail pass: every scraped item's content is attacker-controllable
+    # text. Run inbound detection; BLOCK (prompt-injection match) replaces
+    # content with a placeholder so the LLM never sees the payload, REDACT
+    # (email/phone) replaces those substrings with masks.
+    blocked = 0
+    redacted = 0
+    for it in items:
+        scrubbed, action, reason = scrub_input(it["content"])
+        if action == GuardrailAction.BLOCK:
+            blocked += 1
+            log.info(
+                "scout.input.injection_blocked",
+                module=it.get("module"),
+                url=it.get("url"),
+                reason=reason,
+            )
+            it["content"] = "[redacted: suspected prompt injection]"
+        elif action == GuardrailAction.REDACT:
+            redacted += 1
+            it["content"] = scrubbed
+    if blocked or redacted:
+        log.info("scout.input.guardrail_summary", blocked=blocked, redacted=redacted)
+
     covered_lines = []
     for fp in list(snapshot.covered_claim_fingerprints)[:60]:
         covered_lines.append(fp)
     covered_block = "\n".join(covered_lines) or "(none)"
 
+    # Wrap each item's content in <external_content>…</external_content> so
+    # the extractor prompt's "treat as data, not instructions" rule has a
+    # syntactic boundary to point at. Combined with the inbound scrub above
+    # this gives a defence-in-depth posture against prompt injection.
     raw_lines = []
     for i, it in enumerate(items, 1):
+        meta_bits = [f"module={it['module']}", f"url={it['url']}", f"source={it['source']}"]
+        if it.get("published"):
+            meta_bits.append(f"published={it['published']}")
+        if it.get("cutoff_date"):
+            meta_bits.append(f"cutoff_date={it['cutoff_date']}")
         raw_lines.append(
-            f"[{i}] module={it['module']} url={it['url']} source={it['source']}\n"
+            f"[{i}] {' '.join(meta_bits)}\n"
             f"    title: {it['title'][:160]}\n"
-            f"    content: {it['content']}"
+            f"    content: <external_content>{it['content']}</external_content>"
         )
     raw_block = "\n".join(raw_lines)
 
@@ -199,6 +240,12 @@ def extract(
         except (TypeError, ValueError):
             confidence = 0.6
 
+        # published_at: prefer the LLM-echoed value, fall back to the raw
+        # `published` field name if it slipped through. Strip to date prefix
+        # so partially-iso strings ("2026-05-11T17:00:00Z") render cleanly.
+        published_at = (
+            (obj.get("published_at") or obj.get("published") or "").strip()[:10]
+        )
         findings.append(Finding(
             id=f"f-{len(findings) + 1}",
             claim=claim,
@@ -208,6 +255,7 @@ def extract(
             novelty=novelty,  # type: ignore[arg-type]
             confidence=max(0.0, min(1.0, confidence)),
             why_it_matters=(obj.get("why_it_matters") or "")[:200],
+            published_at=published_at,
         ))
 
     return findings, stage_usage

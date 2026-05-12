@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Optional
 
 import arxiv
@@ -17,9 +18,23 @@ from .time_utils import days_to_cutoff
 _PER_QUERY_MAX = 8
 _TOTAL_MAX = 12
 
+# ArXiv's API recommends ~1 request every 3s and explicitly rate-limits with
+# HTTP 429 above that. We use a single shared Client so its built-in
+# `delay_seconds` actually spans across consecutive Search calls (the library
+# tracks `_last_request_dt` per client). `page_size` is tuned just above
+# `_PER_QUERY_MAX` so we don't pull 100 results per page when we only need 8.
+# `num_retries` gives the library a chance to back off + retry transient 429s.
+_ARXIV_CLIENT = arxiv.Client(
+    page_size=_PER_QUERY_MAX + 2,
+    delay_seconds=3.0,
+    num_retries=5,
+)
+# Extra paranoia: explicit sleep between cache misses inside a single scout
+# run, on top of the client's own delay. Cache hits skip this entirely.
+_INTER_QUERY_SLEEP_S = 3.5
+
 
 def _fetch_one(query: str, per_query: int) -> list[dict]:
-    client = arxiv.Client()
     search = arxiv.Search(
         query=query,
         max_results=per_query,
@@ -27,7 +42,7 @@ def _fetch_one(query: str, per_query: int) -> list[dict]:
         sort_order=arxiv.SortOrder.Descending,
     )
     out: list[dict] = []
-    for paper in client.results(search):
+    for paper in _ARXIV_CLIENT.results(search):
         out.append({
             "id": paper.entry_id,
             "title": paper.title,
@@ -61,21 +76,40 @@ class TechnicalDeepDiveScanner(BaseScanner):
             if progress:
                 progress({"module": self.MODULE_ID, "phase": phase, "message": msg, **extra})
 
+        cache_miss_seen = False
         for q in TECHNICAL_DEEP_DIVE_QUERIES:
             queries_used.append(q)
+            # Track whether the inner fn fires (cache miss) so we can sleep
+            # before the NEXT iteration's API call. ArXiv's 429s come from
+            # consecutive uncached calls; cache-hit runs need no spacing.
+            fired = {"v": False}
+
+            def _do_fetch(_q=q):
+                fired["v"] = True
+                return _fetch_one(_q, _PER_QUERY_MAX)
+
+            # Space out consecutive cache-miss queries within a single run.
+            if cache_miss_seen:
+                time.sleep(_INTER_QUERY_SLEEP_S)
+
             try:
                 raw = cached_call(
                     provider="arxiv",
                     query=q,
                     days=days or 0,
-                    fn=lambda: _fetch_one(q, _PER_QUERY_MAX),
+                    fn=_do_fetch,
                     on_hit=lambda age, _q=q: _emit(
                         f"📦 cache · {_q[:48]}… (age {age // 60}m)", phase="cache"
                     ),
                 )
             except Exception as e:
                 _emit(f"arxiv '{q[:32]}…' failed: {e}", phase="warn")
+                # Don't penalise the next query for THIS one's failure, but
+                # do treat it as having hit the API.
+                cache_miss_seen = cache_miss_seen or fired["v"]
                 continue
+
+            cache_miss_seen = cache_miss_seen or fired["v"]
 
             for paper in raw:
                 pid = str(paper.get("id") or paper.get("url") or "")

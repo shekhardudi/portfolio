@@ -219,11 +219,23 @@ critique_task:
 
     Do NOT produce any image prompt — that step happens downstream.
   expected_output: >
-    Your response must have EXACTLY this section heading and nothing else:
+    Your response MUST start with the exact heading `## Finalized Post`
+    and contain NO other markdown headings.
 
-    ## Finalized Post
-    (The corrected, final LinkedIn post — plain text, under 1200 characters body,
-    hashtags at the end, ready to copy-paste)
+    If the Fact Sheet from the research task is empty, unusable, or shows
+    no authoritative recent material on the requested topic, output under
+    that heading EXACTLY this sentence and nothing else:
+
+      "I couldn't find authoritative recent material on this topic — try
+      a more specific angle."
+
+    Do NOT echo the user's topic, leader_angle, or author_vibe verbatim
+    in any case. Do NOT include any reasoning, fact sheet, or intermediate
+    notes in your output. Do NOT include an image prompt.
+
+    On the happy path, follow the heading with the corrected, final
+    LinkedIn post — plain text, under 1200 characters body, hashtags at
+    the end, ready to copy-paste.
   agent: critic
   context:
     - research_task

@@ -15,7 +15,7 @@ Output schema:
       "summary": "2–3 sentences. Name names, models, numbers. NO fluff.",
       "post_angle": "One ready-to-paste LinkedIn opener (1–2 sentences) the user could literally copy. Provocative, specific, first-person if natural.",
       "finding_ids": ["f-1", "f-3"],
-      "primary_module": "frontier_labs | community_sentiment | technical_deep_dive | tooling_and_tactics | long_form_strategy | expert_synthesis"
+      "primary_module": "frontier_labs | community_sentiment | technical_deep_dive | top_newsletters | expert_synthesis"
     }}
   ],
   "themes": [
@@ -43,9 +43,13 @@ CATEGORY GUIDE — use these to classify each signal:
 
 CONSTRAINTS:
   - Produce 4–8 signals total. AIM for AT LEAST ONE signal per non-empty source module
-    when the findings allow — under-represented modules (tooling, long-form, community,
+    when the findings allow — under-represented modules (top_newsletters, community,
     expert) deserve a slot if they have any decent finding. Do NOT let frontier_labs
     dominate every slot.
+  - Each finding carries a `published_at` field (ISO YYYY-MM-DD, possibly empty).
+    Prefer signals whose underlying findings are recent. The downstream renderer
+    derives each Signal's `published_at` from the newest finding it cites — you do
+    NOT need to emit `published_at` yourself.
   - Every signal MUST cite ≥ 1 finding_id from the input list. finding_ids must match
     exactly. Set primary_module to the module of the first cited finding.
   - 0–3 themes (optional cross-signal narratives — only if a real connection exists).

@@ -132,6 +132,9 @@ export interface ScoutFinding {
   novelty?: FindingNovelty;
   confidence?: number;
   why_it_matters?: string;
+  /** ISO YYYY-MM-DD publish date from the underlying source. Empty/absent
+   *  when the scanner couldn't detect one (e.g. crawled landing pages). */
+  published_at?: string;
 }
 
 /** A pickable, post-ready story — one click → LinkedIn post. */
@@ -144,6 +147,8 @@ export interface ScoutSignal {
   post_angle: string;
   finding_ids: string[];
   primary_module?: string;
+  /** ISO YYYY-MM-DD — newest publish date among the cited findings. */
+  published_at?: string;
 }
 
 export interface ScoutTheme {

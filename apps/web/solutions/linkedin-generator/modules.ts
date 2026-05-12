@@ -18,10 +18,9 @@ export interface ScoutModule {
 export const MODULE_OPTIONS: ScoutModule[] = [
   { label: 'Community Sentiment', key: 'community_sentiment', hint: 'practitioner chatter' },
   { label: 'Technical Deep Dive',  key: 'technical_deep_dive',  hint: 'arXiv + research' },
-  { label: 'Tooling & Tactics',    key: 'tooling_and_tactics',  hint: 'releases + patterns' },
-  { label: 'Long-form Strategy',   key: 'long_form_strategy',   hint: 'deep takes + essays' },
+  { label: 'Top Newsletters',      key: 'top_newsletters',      hint: 'curated weekly digests' },
   { label: 'Frontier Labs',        key: 'frontier_labs',        hint: 'lab announcements' },
-  { label: 'Expert Synthesis',     key: 'expert_synthesis',     hint: 'cross-source themes' },
+  { label: 'Expert Synthesis',     key: 'expert_synthesis',     hint: 'individual expert voices' },
 ];
 
 export const MODULE_LOOKUP: Record<string, ScoutModule> = MODULE_OPTIONS.reduce<Record<string, ScoutModule>>(

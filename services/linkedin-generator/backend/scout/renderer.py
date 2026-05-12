@@ -11,8 +11,7 @@ MODULE_LABELS: dict[str, str] = {
     "frontier_labs": "Frontier Labs",
     "community_sentiment": "Community Sentiment",
     "technical_deep_dive": "Technical Deep Dive",
-    "tooling_and_tactics": "Tooling & Tactics",
-    "long_form_strategy": "Long-form Strategy",
+    "top_newsletters": "Top Newsletters",
     "expert_synthesis": "Expert Synthesis",
 }
 
