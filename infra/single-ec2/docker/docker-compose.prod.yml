@@ -169,11 +169,15 @@ services:
   # 302s to the configured landing channel. Replaces the old nginx sub_filter
   # auto-login script so no credentials are ever served in HTML/JS.
   mm-minter:
-    build: ./mm-minter
+    build:
+      context: ./mm-minter
+      dockerfile: Dockerfile
     container_name: portfolio-mm-minter
     env_file: env/mm-minter.env
     environment:
-      MM_INTERNAL_URL: http://mattermost:8065
+      # Must include the /mattermost subpath because MM's SITEURL is set with
+      # that prefix; bare /api/v4/users/login 302s to /mattermost/api/v4/...
+      MM_INTERNAL_URL: http://mattermost:8065/mattermost
       MM_DEFAULT_NEXT: /mattermost/engineering/channels/Engineering
     ports:
       # Host nginx reaches the minter via 127.0.0.1:8088; not exposed beyond.
