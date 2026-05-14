@@ -12,12 +12,16 @@ refresh well before that.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, RedirectResponse
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("mm-minter")
 
 MM_INTERNAL = os.environ["MM_INTERNAL_URL"]
 MM_LOGIN_ID = os.environ["MM_DEMO_LOGIN_ID"]
@@ -35,15 +39,27 @@ _cache: dict[str, object] = {"token": None, "user_id": None, "exp": 0.0}
 def _login() -> tuple[str, str]:
     if _cache["token"] and time.time() < float(_cache["exp"]):  # type: ignore[arg-type]
         return str(_cache["token"]), str(_cache["user_id"])
+    url = f"{MM_INTERNAL}/api/v4/users/login"
+    log.info("mm_login.request url=%s login_id=%s", url, MM_LOGIN_ID)
     r = httpx.post(
-        f"{MM_INTERNAL}/api/v4/users/login",
+        url,
         json={"login_id": MM_LOGIN_ID, "password": MM_PASSWORD},
         timeout=10.0,
     )
+    if r.status_code >= 400:
+        log.error(
+            "mm_login.upstream_error status=%s body=%s",
+            r.status_code,
+            r.text[:500],
+        )
     r.raise_for_status()
-    token = r.headers["Token"]
+    token = r.headers.get("Token")
+    if not token:
+        log.error("mm_login.missing_token headers=%s", dict(r.headers))
+        raise httpx.HTTPError("Mattermost did not return a Token header")
     user_id = r.json()["id"]
     _cache.update(token=token, user_id=user_id, exp=time.time() + TOKEN_TTL_S)
+    log.info("mm_login.success user_id=%s", user_id)
     return token, user_id
 
 
@@ -59,9 +75,10 @@ def mint(next: str = DEFAULT_NEXT) -> RedirectResponse:
         next = DEFAULT_NEXT
     try:
         token, user_id = _login()
-    except httpx.HTTPError:
+    except httpx.HTTPError as e:
         # Drop the cached token so the next request retries cleanly.
         _cache.update(token=None, user_id=None, exp=0.0)
+        log.exception("mm_login.failed err=%s", e)
         return JSONResponse(  # type: ignore[return-value]
             {"error": "mattermost upstream unavailable"}, status_code=502
         )
