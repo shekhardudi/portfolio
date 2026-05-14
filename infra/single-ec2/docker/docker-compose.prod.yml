@@ -224,15 +224,20 @@ services:
       context: /opt/portfolio/apps/web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-https://shekharlabs.com}
-        NEXT_PUBLIC_INTELLI_SEARCH_API: ${WEB_INTELLI_SEARCH_API:-https://shekharlabs.com/api/intelli-search}
-        NEXT_PUBLIC_AGENTIC_HR_API: ${WEB_AGENTIC_HR_API:-https://shekharlabs.com/api/agentic-hr}
-        NEXT_PUBLIC_LINKEDIN_API: ${WEB_LINKEDIN_API:-https://shekharlabs.com/api/linkedin-generator}
-        # Agentic HR integration chip targets — must be browser-reachable URLs.
-        # In prod we route through nginx subpaths (CloudFront -> EC2:80 -> nginx).
-        NEXT_PUBLIC_NOCO_URL: ${WEB_NOCO_URL:-https://shekharlabs.com/nocodb/}
-        NEXT_PUBLIC_GITEA_URL: ${WEB_GITEA_URL:-https://shekharlabs.com/gitea/}
-        NEXT_PUBLIC_MATTERMOST_URL: ${WEB_MATTERMOST_URL:-https://shekharlabs.com/mattermost/}
+        # Relative URLs by default so the bundle works under any hostname the
+        # visitor arrived on (shekharlabs.com OR the CloudFront default DNS while
+        # propagation is settling). Override with absolute URLs at build time
+        # via the WEB_* env vars if a deployment needs cross-origin API calls.
+        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-}
+        NEXT_PUBLIC_INTELLI_SEARCH_API: ${WEB_INTELLI_SEARCH_API:-/api/intelli-search}
+        NEXT_PUBLIC_AGENTIC_HR_API: ${WEB_AGENTIC_HR_API:-/api/agentic-hr}
+        NEXT_PUBLIC_LINKEDIN_API: ${WEB_LINKEDIN_API:-/api/linkedin-generator}
+        # Agentic HR integration chip targets — relative so the chip click works
+        # from either DNS. The tools themselves still redirect to their canonical
+        # SITEURL once loaded (singleton config; out of scope to dual-host).
+        NEXT_PUBLIC_NOCO_URL: ${WEB_NOCO_URL:-/nocodb/}
+        NEXT_PUBLIC_GITEA_URL: ${WEB_GITEA_URL:-/gitea/}
+        NEXT_PUBLIC_MATTERMOST_URL: ${WEB_MATTERMOST_URL:-/mattermost/}
 
     container_name: portfolio-web
     environment:

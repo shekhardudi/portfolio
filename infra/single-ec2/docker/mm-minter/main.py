@@ -12,13 +12,15 @@ refresh well before that.
 
 from __future__ import annotations
 
+import html
+import json
 import logging
 import os
 import time
 
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mm-minter")
@@ -68,8 +70,37 @@ def healthz() -> dict:
     return {"ok": True}
 
 
+_STUB_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loading Mattermost…</title>
+<meta name="robots" content="noindex">
+<style>
+html,body{{margin:0;height:100%;background:#1e325c;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
+display:flex;align-items:center;justify-content:center}}
+.spinner{{width:32px;height:32px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;
+animation:spin .8s linear infinite}}
+@keyframes spin{{to{{transform:rotate(360deg)}}}}
+</style>
+</head>
+<body>
+<div class="spinner" aria-label="Loading"></div>
+<script>
+// Set MM's mobile-splash-seen flag in localStorage (cookie was set in the
+// response headers above). localStorage is origin-scoped so MM's React bundle,
+// which runs on the same origin, will read this value and skip the splash.
+try {{ localStorage.setItem('__landingPageSeen__', 'true'); }} catch (e) {{}}
+location.replace({next_js});
+</script>
+<noscript><meta http-equiv="refresh" content="0; url={next_attr}"></noscript>
+</body>
+</html>
+"""
+
+
 @app.get("/mint")
-def mint(next: str = DEFAULT_NEXT) -> RedirectResponse:
+def mint(next: str = DEFAULT_NEXT):
     # Whitelist `next` to /mattermost/ to prevent open-redirect abuse.
     if not next.startswith("/mattermost/"):
         next = DEFAULT_NEXT
@@ -79,10 +110,14 @@ def mint(next: str = DEFAULT_NEXT) -> RedirectResponse:
         # Drop the cached token so the next request retries cleanly.
         _cache.update(token=None, user_id=None, exp=0.0)
         log.exception("mm_login.failed err=%s", e)
-        return JSONResponse(  # type: ignore[return-value]
+        return JSONResponse(
             {"error": "mattermost upstream unavailable"}, status_code=502
         )
-    resp = RedirectResponse(url=next, status_code=302)
+    body = _STUB_HTML.format(
+        next_js=json.dumps(next),       # safe for the inline <script>
+        next_attr=html.escape(next, quote=True),  # safe for the noscript meta
+    )
+    resp = HTMLResponse(content=body, status_code=200)
     cookie_kwargs = dict(
         path="/mattermost",
         max_age=COOKIE_MAX_AGE_S,
@@ -94,8 +129,8 @@ def mint(next: str = DEFAULT_NEXT) -> RedirectResponse:
     # weight on its own so it's readable.
     resp.set_cookie("MMAUTHTOKEN", token, httponly=True, **cookie_kwargs)  # type: ignore[arg-type]
     resp.set_cookie("MMUSERID", user_id, **cookie_kwargs)  # type: ignore[arg-type]
-    # Skip MM's mobile "Open in app / View in browser" splash, which 404s under
-    # our /mattermost/ basepath.
+    # Belt-and-braces alongside the localStorage flag set in the stub script:
+    # cookie is consulted on some MM code paths, localStorage on others.
     resp.set_cookie(
         "MMUSERAGREEDTOOPENINBROWSER",
         "true",

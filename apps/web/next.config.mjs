@@ -8,7 +8,10 @@ const nextConfig = {
     mdxRs: true,
   },
   images: {
-    remotePatterns: [{ protocol: 'https', hostname: '**.shekharlabs.com' }],
+    remotePatterns: [
+      { protocol: 'https', hostname: '**.shekharlabs.com' },
+      { protocol: 'https', hostname: '*.cloudfront.net' },
+    ],
   },
 };
 
