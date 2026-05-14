@@ -127,6 +127,12 @@ services:
       GITEA__server__ROOT_URL: ${GITEA_ROOT_URL:-https://shekharlabs.com/gitea/}
       GITEA__server__SSH_DOMAIN: ${GITEA_SSH_DOMAIN:-shekharlabs.com}
       GITEA__server__SSH_PORT: "2222"
+      # Anonymous-browse posture: visitors see public repos without login.
+      # Push still requires the demo account; registration is closed.
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "false"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__service__SHOW_REGISTRATION_BUTTON: "false"
+      GITEA__service__ENABLE_NOTIFY_MAIL: "false"
     volumes:
       - gitea-data:/data
     ports:
@@ -156,6 +162,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks: [portfolio]
+
+  # Server-side session minter: logs in to Mattermost as the demo user using
+  # env-loaded credentials, sets MM cookies on the visitor's response, and
+  # 302s to the configured landing channel. Replaces the old nginx sub_filter
+  # auto-login script so no credentials are ever served in HTML/JS.
+  mm-minter:
+    build: ./mm-minter
+    container_name: portfolio-mm-minter
+    env_file: env/mm-minter.env
+    environment:
+      MM_INTERNAL_URL: http://mattermost:8065
+      MM_DEFAULT_NEXT: /mattermost/engineering/channels/Engineering
+    ports:
+      # Host nginx reaches the minter via 127.0.0.1:8088; not exposed beyond.
+      - "127.0.0.1:8088:8088"
+    depends_on:
+      - mattermost
     networks: [portfolio]
 
   agentic-hr:

@@ -7,7 +7,9 @@
       "Bash(grep -oE '\\\\.inter_[^{]*\\\\{[^}]*\\\\}|\\\\.jetbrains_mono_[^{]*\\\\{[^}]*\\\\}|@font-face[^}]*\\\\}' /tmp/portal-main.css | head -10)",
       "Read(//private/tmp/**)",
       "WebSearch",
-      "WebFetch(domain:info.arxiv.org)"
+      "WebFetch(domain:info.arxiv.org)",
+      "WebFetch(domain:nocodb.com)",
+      "WebFetch(domain:docs.mattermost.com)"
     ]
   }
 }
